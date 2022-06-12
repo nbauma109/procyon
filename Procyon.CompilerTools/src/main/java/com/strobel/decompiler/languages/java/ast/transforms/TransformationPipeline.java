@@ -78,7 +78,7 @@ public final class TransformationPipeline {
             new AddReferenceQualifiersTransform(context),
             new RemoveHiddenMembersTransform(context),
             new CollapseImportsTransform(context),
-            new RewriteInitForLineStretchTransform(context),
+            new RewriteInitForLineStretchTransform(),
             new ReOrderMembersForLineStretchTransform(context)
         };
     }
