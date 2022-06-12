@@ -1673,6 +1673,7 @@ public final class JavaOutputVisitor implements IAstVisitor<Void, Void> {
     @Override
     public Void visitFieldDeclaration(final FieldDeclaration node, final Void ignored) {
         startNode(node);
+        formatter.resetLineNumberOffsets(OffsetToLineNumberConverter.NOOP_CONVERTER);
         writeAnnotations(node.getAnnotations(), true);
         writeModifiers(node.getModifiers());
 
