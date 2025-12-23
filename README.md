@@ -1,3 +1,5 @@
+[![Coverage Status](https://codecov.io/gh/nbauma109/procyon/branch/master/graph/badge.svg)](https://app.codecov.io/gh/nbauma109/procyon)
+
 ![](https://mstrobel.github.io/procyon/procyon.png)
 
 *Procyon* is a suite of Java metaprogramming tools focused on code generation and analysis.  It includes the following libraries:
@@ -131,3 +133,4 @@ Check out these third party products based on Procyon!  Are you using Procyon in
     A JavaFX-based decompiler front-end with fast and convenient code navigation.  Download it, or launch it directly from your browser.
 
   - [Bytecode Viewer](https://github.com/Konloch/bytecode-viewer) is an open source Java decompilation, disassembly, and debugging suite by [@Konloch](https://twitter.com/Konloch).  It can produce decompiled sources from several modern Java decompilers, including Procyon, CFR, and FernFlower.
+
