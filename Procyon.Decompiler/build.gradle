@@ -11,7 +11,7 @@ jar {
 }
 
 dependencies {
-    compile 'com.beust:jcommander:1.78'
+    compile 'com.beust:jcommander:1.82'
     compile project(':Procyon.Core')
     compile project(':Procyon.CompilerTools')
 }
