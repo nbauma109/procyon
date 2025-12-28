@@ -47,7 +47,7 @@ allprojects {
     version procyonVersion
 
     group 'com.github.mstrobel'
-    sourceCompatibility = 1.7    // JDK version
+    sourceCompatibility = 1.8    // JDK version
 
     repositories {
         mavenCentral()
