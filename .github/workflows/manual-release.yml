@@ -1,0 +1,130 @@
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      next_snapshot_version:
+        description: Optional. Next snapshot version in x.y.z-SNAPSHOT format (example: 0.6.3-SNAPSHOT). If empty, we bump the patch number.
+        required: false
+        default: ""
+      version_file:
+        description: Path to the Java file that contains the VERSION constant.
+        required: false
+        default: "Procyon.Core/src/main/java/com/strobel/Procyon.java"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: manual-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: ${{ github.ref_type == 'branch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.ref }}
+
+      - name: Prepare release, tag, and next snapshot
+        env:
+          VERSION_FILE: ${{ github.event.inputs.version_file }}
+          NEXT_SNAPSHOT_INPUT: ${{ github.event.inputs.next_snapshot_version }}
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${VERSION_FILE}" ]]; then
+            VERSION_FILE="Procyon.Core/src/main/java/com/strobel/Procyon.java"
+          fi
+
+          if [[ ! -f "${VERSION_FILE}" ]]; then
+            echo "Version file not found: ${VERSION_FILE}"
+            exit 1
+          fi
+
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "Working tree is not clean. Please run the workflow from a clean branch state."
+            git status --porcelain
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          version_line="$(grep -E 'private[[:space:]]+static[[:space:]]+final[[:space:]]+String[[:space:]]+VERSION[[:space:]]*=' "${VERSION_FILE}" | head -n 1 || true)"
+          if [[ -z "${version_line}" ]]; then
+            echo "Could not find VERSION constant in: ${VERSION_FILE}"
+            exit 1
+          fi
+
+          current_version="$(echo "${version_line}" | sed -E 's/.*VERSION[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')"
+          if [[ -z "${current_version}" ]]; then
+            echo "Could not extract current version from VERSION constant in: ${VERSION_FILE}"
+            exit 1
+          fi
+
+          if [[ "${current_version}" != *-SNAPSHOT ]]; then
+            echo "Expected a -SNAPSHOT version, but found: ${current_version}"
+            exit 1
+          fi
+
+          release_version="${current_version%-SNAPSHOT}"
+
+          if [[ ! "${release_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release version must be in x.y.z format. Found: ${release_version}"
+            exit 1
+          fi
+
+          if [[ -n "${NEXT_SNAPSHOT_INPUT}" ]]; then
+            next_snapshot_version="${NEXT_SNAPSHOT_INPUT}"
+          else
+            IFS='.' read -r major minor patch <<< "${release_version}"
+            patch=$((patch + 1))
+            next_snapshot_version="${major}.${minor}.${patch}-SNAPSHOT"
+          fi
+
+          if [[ ! "${next_snapshot_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+-SNAPSHOT$ ]]; then
+            echo "Next snapshot version must be in x.y.z-SNAPSHOT format. Found: ${next_snapshot_version}"
+            exit 1
+          fi
+
+          release_sed_expr="s/(private[[:space:]]+static[[:space:]]+final[[:space:]]+String[[:space:]]+VERSION[[:space:]]*=[[:space:]]*\")[^\"]+(\")/\1${release_version}\2/"
+          next_sed_expr="s/(private[[:space:]]+static[[:space:]]+final[[:space:]]+String[[:space:]]+VERSION[[:space:]]*=[[:space:]]*\")[^\"]+(\")/\1${next_snapshot_version}\2/"
+
+          # We set the version to the release version (remove -SNAPSHOT), then commit and push.
+          sed -i -E "${release_sed_expr}" "${VERSION_FILE}"
+
+          if git diff --quiet; then
+            echo "No changes after setting release version. Refusing to continue."
+            exit 1
+          fi
+
+          git add "${VERSION_FILE}"
+          git commit -m "prepare release ${release_version}"
+          git push origin "HEAD:${BRANCH_NAME}"
+
+          if git rev-parse -q --verify "refs/tags/${release_version}" >/dev/null; then
+            echo "Tag already exists: ${release_version}"
+            exit 1
+          fi
+
+          git tag "${release_version}"
+          git push origin "refs/tags/${release_version}"
+
+          # We set the version to the next development snapshot, then commit and push.
+          sed -i -E "${next_sed_expr}" "${VERSION_FILE}"
+
+          if git diff --quiet; then
+            echo "No changes after setting next snapshot version. Refusing to continue."
+            exit 1
+          fi
+
+          git add "${VERSION_FILE}"
+          git commit -m "prepare for next development iteration ${next_snapshot_version}"
+          git push origin "HEAD:${BRANCH_NAME}"
