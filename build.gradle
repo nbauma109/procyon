@@ -39,7 +39,7 @@ allprojects {
     apply plugin: 'jacoco'
 
     jacoco {
-        toolVersion = '0.8.12'
+        toolVersion = '0.8.14'
     }
 
     buildDir = rootDir.canonicalPath + "/build/" + rootProject.relativePath(projectDir.canonicalPath)
@@ -290,18 +290,15 @@ task jacocoRootReport(type: JacocoReport, dependsOn: tasks.jacocoMerge) {
     logger.lifecycle 'Using aggregated file: ' + tasks.jacocoMerge.destinationFile
     executionData.from tasks.jacocoMerge.destinationFile
 
-    project.afterEvaluate {
-        // The JacocoReport tasks are the source of truth for class files and sources.
-        def reportTasks = getReportTasks(tasks.jacocoRootReport)
-        classDirectories.from project.files({
-            reportTasks.collect {it.classDirectories}.findAll {it != null}
-        })
-        sourceDirectories.from project.files({
-            reportTasks.collect {it.sourceDirectories}.findAll {it != null}
-        })
-    }
+	project.afterEvaluate {
+	    def coveredProjects = getProjectList().findAll { it != rootProject && it.plugins.hasPlugin('java') }
+	
+	    classDirectories.setFrom(files(coveredProjects.collect { it.sourceSets.main.output.classesDirs }))
+	    sourceDirectories.setFrom(files(coveredProjects.collect { it.sourceSets.main.allSource.srcDirs }))
+	    additionalSourceDirs.setFrom(files(coveredProjects.collect { it.sourceSets.main.allSource.srcDirs }))
+	}
 
-    reports {
+	reports {
         xml.enabled = true
         html.enabled = true
     }
