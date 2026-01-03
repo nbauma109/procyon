@@ -134,17 +134,19 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
                 FieldDeclaration fieldDeclaration = fieldDeclarations.get(memberReference.getFullName());
                 Expression initializer = node.getRight();
                 int offset = initializer.getOffset();
-                int lineNumber = lineNumberTableConverter.getLineForOffset(offset);
-                if (lineNumber > 0 && fieldDeclaration != null && !methodDefinition.hasParameter(memberReference.getName())) {
-                    LocalVariableTableAttribute localVariableTable = SourceAttribute.find(AttributeNames.LocalVariableTable, methodDefinition.getSourceAttributes());
-                    IdentifierGatherer identifierGatherer = new IdentifierGatherer();
-                    initializer.acceptVisitor(identifierGatherer, null);
-                    if (localVariableTable == null || identifierGatherer.containsNoneOf(localVariableTable.getEntries())) {
-                        fieldDeclaration.setLineNumber(lineNumber);
-                        FieldLocation fieldLocation = new FieldLocation(memberReference.getFullName(), offset);
-                        fieldInitLocations.putIfAbsent(fieldLocation, new FieldInit(fieldDeclaration));
-                        fieldInitLocations.get(fieldLocation).init(initializer, (ExpressionStatement) node.getParent(), methodDefinition);
-                    }
+                if (offset != Expression.MYSTERY_OFFSET) {
+	                int lineNumber = lineNumberTableConverter.getLineForOffset(offset);
+	                if (lineNumber > 0 && fieldDeclaration != null && !methodDefinition.hasParameter(memberReference.getName())) {
+	                    LocalVariableTableAttribute localVariableTable = SourceAttribute.find(AttributeNames.LocalVariableTable, methodDefinition.getSourceAttributes());
+	                    IdentifierGatherer identifierGatherer = new IdentifierGatherer();
+	                    initializer.acceptVisitor(identifierGatherer, null);
+	                    if (localVariableTable == null || identifierGatherer.containsNoneOf(localVariableTable.getEntries())) {
+	                        fieldDeclaration.setLineNumber(lineNumber);
+	                        FieldLocation fieldLocation = new FieldLocation(memberReference.getFullName(), offset);
+	                        fieldInitLocations.putIfAbsent(fieldLocation, new FieldInit(fieldDeclaration));
+	                        fieldInitLocations.get(fieldLocation).init(initializer, (ExpressionStatement) node.getParent(), methodDefinition);
+	                    }
+	                }
                 }
             }
         }
