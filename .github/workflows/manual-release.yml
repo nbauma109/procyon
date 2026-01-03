@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       next_snapshot_version:
-        description: Optional. Next snapshot version in x.y.z-SNAPSHOT format (example: 0.6.3-SNAPSHOT). If empty, we bump the patch number.
+        description: "Optional. Next snapshot version in x.y.z-SNAPSHOT format (example: 0.6.3-SNAPSHOT). If empty, we bump the patch number."
         required: false
         default: ""
       version_file:
-        description: Path to the Java file that contains the VERSION constant.
+        description: "Path to the Java file that contains the VERSION constant."
         required: false
         default: "Procyon.Core/src/main/java/com/strobel/Procyon.java"
 
@@ -97,7 +97,6 @@ jobs:
           release_sed_expr="s/(private[[:space:]]+static[[:space:]]+final[[:space:]]+String[[:space:]]+VERSION[[:space:]]*=[[:space:]]*\")[^\"]+(\")/\1${release_version}\2/"
           next_sed_expr="s/(private[[:space:]]+static[[:space:]]+final[[:space:]]+String[[:space:]]+VERSION[[:space:]]*=[[:space:]]*\")[^\"]+(\")/\1${next_snapshot_version}\2/"
 
-          # We set the version to the release version (remove -SNAPSHOT), then commit and push.
           sed -i -E "${release_sed_expr}" "${VERSION_FILE}"
 
           if git diff --quiet; then
@@ -117,7 +116,6 @@ jobs:
           git tag "${release_version}"
           git push origin "refs/tags/${release_version}"
 
-          # We set the version to the next development snapshot, then commit and push.
           sed -i -E "${next_sed_expr}" "${VERSION_FILE}"
 
           if git diff --quiet; then
