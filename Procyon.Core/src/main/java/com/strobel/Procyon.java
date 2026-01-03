@@ -14,7 +14,7 @@
 package com.strobel;
 
 public final class Procyon {
-    private static final String VERSION = "0.6.2";
+    private static final String VERSION = "0.6.3-SNAPSHOT";
 
     public static String version() {
         return VERSION;
