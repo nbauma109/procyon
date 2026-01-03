@@ -290,17 +290,15 @@ task jacocoRootReport(type: JacocoReport, dependsOn: tasks.jacocoMerge) {
     logger.lifecycle 'Using aggregated file: ' + tasks.jacocoMerge.destinationFile
     executionData.from tasks.jacocoMerge.destinationFile
 
-    project.afterEvaluate {
-        // The JacocoReport tasks are the source of truth for class files and sources.
-        def reportTasks = getReportTasks(tasks.jacocoRootReport)
-	    def allClassDirs = files(reportTasks.collectMany { it.classDirectories.files })
-	    def allSourceDirs = files(reportTasks.collectMany { it.sourceDirectories.files })
+	project.afterEvaluate {
+	    def coveredProjects = getProjectList().findAll { it != rootProject && it.plugins.hasPlugin('java') }
 	
-	    classDirectories.setFrom(allClassDirs)
-	    sourceDirectories.setFrom(allSourceDirs)
-    }
+	    classDirectories.setFrom(files(coveredProjects.collect { it.sourceSets.main.output.classesDirs }))
+	    sourceDirectories.setFrom(files(coveredProjects.collect { it.sourceSets.main.allSource.srcDirs }))
+	    additionalSourceDirs.setFrom(files(coveredProjects.collect { it.sourceSets.main.allSource.srcDirs }))
+	}
 
-    reports {
+	reports {
         xml.enabled = true
         html.enabled = true
     }
