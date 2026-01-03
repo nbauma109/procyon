@@ -1,0 +1,342 @@
+class com.example.platform.api.ApiMarker
+  Minor version: 0
+  Major version: 65
+  Flags: PUBLIC, FINAL, SUPER
+  SourceFile: ApiMarker.java
+  Constant Pool:
+        1: MethodReference           #2.#3          //  java/lang/Object.<init>:()V
+        2: TypeInfo                  #4             //  java/lang/Object
+        3: NameAndTypeDescriptor     #5.#6          //  <init>:()V
+        4: Utf8StringConstant        "java/lang/Object"
+        5: Utf8StringConstant        "<init>"
+        6: Utf8StringConstant        "()V"
+        7: TypeInfo                  #8             //  com/example/platform/api/ApiMarker
+        8: Utf8StringConstant        "com/example/platform/api/ApiMarker"
+        9: Utf8StringConstant        "Code"
+       10: Utf8StringConstant        "LineNumberTable"
+       11: Utf8StringConstant        "LocalVariableTable"
+       12: Utf8StringConstant        "this"
+       13: Utf8StringConstant        "Lcom/example/platform/api/ApiMarker;"
+       14: Utf8StringConstant        "SourceFile"
+       15: Utf8StringConstant        "ApiMarker.java"
+  
+  public void <init>();
+    Flags: PUBLIC
+    Code:
+      stack=1, locals=1, arguments=0
+           0: aload_0         /* this */
+           1: invokespecial   java/lang/Object.<init>:()V
+           4: return         
+    LocalVariableTable:
+      Start  Length  Slot  Name  Signature
+      -----  ------  ----  ----  ------------------------------------
+      0      5       0     this  Lcom/example/platform/api/ApiMarker;
+class com.example.platform.impl.ExampleSqlDriver
+  Minor version: 0
+  Major version: 65
+  Flags: PUBLIC, FINAL, SUPER
+  SourceFile: ExampleSqlDriver.java
+  Constant Pool:
+        1: MethodReference           #2.#3          //  java/lang/Object.<init>:()V
+        2: TypeInfo                  #4             //  java/lang/Object
+        3: NameAndTypeDescriptor     #5.#6          //  <init>:()V
+        4: Utf8StringConstant        "java/lang/Object"
+        5: Utf8StringConstant        "<init>"
+        6: Utf8StringConstant        "()V"
+        7: TypeInfo                  #8             //  java/sql/DriverPropertyInfo
+        8: Utf8StringConstant        "java/sql/DriverPropertyInfo"
+        9: MethodReference           #10.#11        //  java/util/logging/Logger.getGlobal:()Ljava/util/logging/Logger;
+       10: TypeInfo                  #12            //  java/util/logging/Logger
+       11: NameAndTypeDescriptor     #13.#14        //  getGlobal:()Ljava/util/logging/Logger;
+       12: Utf8StringConstant        "java/util/logging/Logger"
+       13: Utf8StringConstant        "getGlobal"
+       14: Utf8StringConstant        "()Ljava/util/logging/Logger;"
+       15: TypeInfo                  #16            //  com/example/platform/impl/ExampleSqlDriver
+       16: Utf8StringConstant        "com/example/platform/impl/ExampleSqlDriver"
+       17: TypeInfo                  #18            //  java/sql/Driver
+       18: Utf8StringConstant        "java/sql/Driver"
+       19: Utf8StringConstant        "Code"
+       20: Utf8StringConstant        "LineNumberTable"
+       21: Utf8StringConstant        "LocalVariableTable"
+       22: Utf8StringConstant        "this"
+       23: Utf8StringConstant        "Lcom/example/platform/impl/ExampleSqlDriver;"
+       24: Utf8StringConstant        "connect"
+       25: Utf8StringConstant        "(Ljava/lang/String;Ljava/util/Properties;)Ljava/sql/Connection;"
+       26: Utf8StringConstant        "url"
+       27: Utf8StringConstant        "Ljava/lang/String;"
+       28: Utf8StringConstant        "info"
+       29: Utf8StringConstant        "Ljava/util/Properties;"
+       30: Utf8StringConstant        "Exceptions"
+       31: TypeInfo                  #32            //  java/sql/SQLException
+       32: Utf8StringConstant        "java/sql/SQLException"
+       33: Utf8StringConstant        "acceptsURL"
+       34: Utf8StringConstant        "(Ljava/lang/String;)Z"
+       35: Utf8StringConstant        "getPropertyInfo"
+       36: Utf8StringConstant        "(Ljava/lang/String;Ljava/util/Properties;)[Ljava/sql/DriverPropertyInfo;"
+       37: Utf8StringConstant        "getMajorVersion"
+       38: Utf8StringConstant        "()I"
+       39: Utf8StringConstant        "getMinorVersion"
+       40: Utf8StringConstant        "jdbcCompliant"
+       41: Utf8StringConstant        "()Z"
+       42: Utf8StringConstant        "getParentLogger"
+       43: Utf8StringConstant        "SourceFile"
+       44: Utf8StringConstant        "ExampleSqlDriver.java"
+  
+  public void <init>();
+    Flags: PUBLIC
+    Code:
+      stack=1, locals=1, arguments=0
+           0: aload_0         /* this */
+           1: invokespecial   java/lang/Object.<init>:()V
+           4: return         
+    LocalVariableTable:
+      Start  Length  Slot  Name  Signature
+      -----  ------  ----  ----  --------------------------------------------
+      0      5       0     this  Lcom/example/platform/impl/ExampleSqlDriver;
+  
+  public java.sql.Connection connect(java.lang.String url, java.util.Properties info) throws java.sql.SQLException;
+    Flags: PUBLIC
+    Code:
+      stack=1, locals=3, arguments=2
+           0: aconst_null    
+           1: areturn        
+    Exceptions:
+      throws java.sql.SQLException
+    LocalVariableTable:
+      Start  Length  Slot  Name  Signature
+      -----  ------  ----  ----  --------------------------------------------
+      0      2       0     this  Lcom/example/platform/impl/ExampleSqlDriver;
+      0      2       1     url   Ljava/lang/String;
+      0      2       2     info  Ljava/util/Properties;
+  
+  public boolean acceptsURL(java.lang.String url) throws java.sql.SQLException;
+    Flags: PUBLIC
+    Code:
+      stack=1, locals=2, arguments=1
+           0: iconst_0       
+           1: ireturn        
+    Exceptions:
+      throws java.sql.SQLException
+    LocalVariableTable:
+      Start  Length  Slot  Name  Signature
+      -----  ------  ----  ----  --------------------------------------------
+      0      2       0     this  Lcom/example/platform/impl/ExampleSqlDriver;
+      0      2       1     url   Ljava/lang/String;
+  
+  public java.sql.DriverPropertyInfo[] getPropertyInfo(java.lang.String url, java.util.Properties info) throws java.sql.SQLException;
+    Flags: PUBLIC
+    Code:
+      stack=1, locals=3, arguments=2
+           0: iconst_0       
+           1: anewarray       Ljava/sql/DriverPropertyInfo;
+           4: areturn        
+    Exceptions:
+      throws java.sql.SQLException
+    LocalVariableTable:
+      Start  Length  Slot  Name  Signature
+      -----  ------  ----  ----  --------------------------------------------
+      0      5       0     this  Lcom/example/platform/impl/ExampleSqlDriver;
+      0      5       1     url   Ljava/lang/String;
+      0      5       2     info  Ljava/util/Properties;
+  
+  public int getMajorVersion();
+    Flags: PUBLIC
+    Code:
+      stack=1, locals=1, arguments=0
+           0: iconst_1       
+           1: ireturn        
+    LocalVariableTable:
+      Start  Length  Slot  Name  Signature
+      -----  ------  ----  ----  --------------------------------------------
+      0      2       0     this  Lcom/example/platform/impl/ExampleSqlDriver;
+  
+  public int getMinorVersion();
+    Flags: PUBLIC
+    Code:
+      stack=1, locals=1, arguments=0
+           0: iconst_0       
+           1: ireturn        
+    LocalVariableTable:
+      Start  Length  Slot  Name  Signature
+      -----  ------  ----  ----  --------------------------------------------
+      0      2       0     this  Lcom/example/platform/impl/ExampleSqlDriver;
+  
+  public boolean jdbcCompliant();
+    Flags: PUBLIC
+    Code:
+      stack=1, locals=1, arguments=0
+           0: iconst_0       
+           1: ireturn        
+    LocalVariableTable:
+      Start  Length  Slot  Name  Signature
+      -----  ------  ----  ----  --------------------------------------------
+      0      2       0     this  Lcom/example/platform/impl/ExampleSqlDriver;
+  
+  public java.util.logging.Logger getParentLogger();
+    Flags: PUBLIC
+    Code:
+      stack=1, locals=1, arguments=0
+           0: invokestatic    java/util/logging/Logger.getGlobal:()Ljava/util/logging/Logger;
+           3: areturn        
+    LocalVariableTable:
+      Start  Length  Slot  Name  Signature
+      -----  ------  ----  ----  --------------------------------------------
+      0      4       0     this  Lcom/example/platform/impl/ExampleSqlDriver;
+class com.example.platform.internal.InternalMarker
+  Minor version: 0
+  Major version: 65
+  Flags: PUBLIC, FINAL, SUPER
+  SourceFile: InternalMarker.java
+  Constant Pool:
+        1: MethodReference           #2.#3          //  java/lang/Object.<init>:()V
+        2: TypeInfo                  #4             //  java/lang/Object
+        3: NameAndTypeDescriptor     #5.#6          //  <init>:()V
+        4: Utf8StringConstant        "java/lang/Object"
+        5: Utf8StringConstant        "<init>"
+        6: Utf8StringConstant        "()V"
+        7: TypeInfo                  #8             //  com/example/platform/internal/InternalMarker
+        8: Utf8StringConstant        "com/example/platform/internal/InternalMarker"
+        9: Utf8StringConstant        "Code"
+       10: Utf8StringConstant        "LineNumberTable"
+       11: Utf8StringConstant        "LocalVariableTable"
+       12: Utf8StringConstant        "this"
+       13: Utf8StringConstant        "Lcom/example/platform/internal/InternalMarker;"
+       14: Utf8StringConstant        "SourceFile"
+       15: Utf8StringConstant        "InternalMarker.java"
+  
+  public void <init>();
+    Flags: PUBLIC
+    Code:
+      stack=1, locals=1, arguments=0
+           0: aload_0         /* this */
+           1: invokespecial   java/lang/Object.<init>:()V
+           4: return         
+    LocalVariableTable:
+      Start  Length  Slot  Name  Signature
+      -----  ------  ----  ----  ----------------------------------------------
+      0      5       0     this  Lcom/example/platform/internal/InternalMarker;
+class com.example.platform.model.ModelMarker
+  Minor version: 0
+  Major version: 65
+  Flags: PUBLIC, FINAL, SUPER
+  SourceFile: ModelMarker.java
+  Constant Pool:
+        1: MethodReference           #2.#3          //  java/lang/Object.<init>:()V
+        2: TypeInfo                  #4             //  java/lang/Object
+        3: NameAndTypeDescriptor     #5.#6          //  <init>:()V
+        4: Utf8StringConstant        "java/lang/Object"
+        5: Utf8StringConstant        "<init>"
+        6: Utf8StringConstant        "()V"
+        7: TypeInfo                  #8             //  com/example/platform/model/ModelMarker
+        8: Utf8StringConstant        "com/example/platform/model/ModelMarker"
+        9: Utf8StringConstant        "Code"
+       10: Utf8StringConstant        "LineNumberTable"
+       11: Utf8StringConstant        "LocalVariableTable"
+       12: Utf8StringConstant        "this"
+       13: Utf8StringConstant        "Lcom/example/platform/model/ModelMarker;"
+       14: Utf8StringConstant        "SourceFile"
+       15: Utf8StringConstant        "ModelMarker.java"
+  
+  public void <init>();
+    Flags: PUBLIC
+    Code:
+      stack=1, locals=1, arguments=0
+           0: aload_0         /* this */
+           1: invokespecial   java/lang/Object.<init>:()V
+           4: return         
+    LocalVariableTable:
+      Start  Length  Slot  Name  Signature
+      -----  ------  ----  ----  ----------------------------------------
+      0      5       0     this  Lcom/example/platform/model/ModelMarker;
+class com.example.platform.persistence.PersistenceMarker
+  Minor version: 0
+  Major version: 65
+  Flags: PUBLIC, FINAL, SUPER
+  SourceFile: PersistenceMarker.java
+  Constant Pool:
+        1: MethodReference           #2.#3          //  java/lang/Object.<init>:()V
+        2: TypeInfo                  #4             //  java/lang/Object
+        3: NameAndTypeDescriptor     #5.#6          //  <init>:()V
+        4: Utf8StringConstant        "java/lang/Object"
+        5: Utf8StringConstant        "<init>"
+        6: Utf8StringConstant        "()V"
+        7: TypeInfo                  #8             //  com/example/platform/persistence/PersistenceMarker
+        8: Utf8StringConstant        "com/example/platform/persistence/PersistenceMarker"
+        9: Utf8StringConstant        "Code"
+       10: Utf8StringConstant        "LineNumberTable"
+       11: Utf8StringConstant        "LocalVariableTable"
+       12: Utf8StringConstant        "this"
+       13: Utf8StringConstant        "Lcom/example/platform/persistence/PersistenceMarker;"
+       14: Utf8StringConstant        "SourceFile"
+       15: Utf8StringConstant        "PersistenceMarker.java"
+  
+  public void <init>();
+    Flags: PUBLIC
+    Code:
+      stack=1, locals=1, arguments=0
+           0: aload_0         /* this */
+           1: invokespecial   java/lang/Object.<init>:()V
+           4: return         
+    LocalVariableTable:
+      Start  Length  Slot  Name  Signature
+      -----  ------  ----  ----  ----------------------------------------------------
+      0      5       0     this  Lcom/example/platform/persistence/PersistenceMarker;
+module com.example.platform
+  Minor version: 0
+  Major version: 65
+  SourceFile: module-info.java
+  ModulePackages: com.example.platform.api
+                  com.example.platform.impl
+                  com.example.platform.internal
+                  com.example.platform.model
+                  com.example.platform.persistence
+  Constant Pool:
+        1: TypeInfo                  #2             //  module-info
+        2: Utf8StringConstant        "module-info"
+        3: Utf8StringConstant        "SourceFile"
+        4: Utf8StringConstant        "module-info.java"
+        5: Utf8StringConstant        "Module"
+        6: Module                    #7             //  com.example.platform
+        7: Utf8StringConstant        "com.example.platform"
+        8: Utf8StringConstant        "1.0.0"
+        9: Module                    #10            //  java.base
+       10: Utf8StringConstant        "java.base"
+       11: Utf8StringConstant        "21.0.6"
+       12: Module                    #13            //  java.sql
+       13: Utf8StringConstant        "java.sql"
+       14: Module                    #15            //  java.xml
+       15: Utf8StringConstant        "java.xml"
+       16: Module                    #17            //  java.compiler
+       17: Utf8StringConstant        "java.compiler"
+       18: Package                   #19            //  com/example/platform/api
+       19: Utf8StringConstant        "com/example/platform/api"
+       20: Package                   #21            //  com/example/platform/internal
+       21: Utf8StringConstant        "com/example/platform/internal"
+       22: Module                    #23            //  java.logging
+       23: Utf8StringConstant        "java.logging"
+       24: Package                   #25            //  com/example/platform/model
+       25: Utf8StringConstant        "com/example/platform/model"
+       26: Package                   #27            //  com/example/platform/persistence
+       27: Utf8StringConstant        "com/example/platform/persistence"
+       28: TypeInfo                  #29            //  java/sql/Driver
+       29: Utf8StringConstant        "java/sql/Driver"
+       30: TypeInfo                  #31            //  com/example/platform/impl/ExampleSqlDriver
+       31: Utf8StringConstant        "com/example/platform/impl/ExampleSqlDriver"
+       32: Utf8StringConstant        "ModulePackages"
+       33: Utf8StringConstant        "com/example/platform/impl"
+       34: Package                   #33            //  com/example/platform/impl
+  
+  requires java.base mandated;
+  requires java.sql;
+  requires transitive java.xml;
+  requires static java.compiler;
+  
+  exports com/example/platform/api;
+  exports com/example/platform/internal to java.logging;
+  
+  opens com/example/platform/model;
+  opens com/example/platform/persistence to java.sql;
+  
+  uses java/sql/Driver;
+  
+  provides java/sql/Driver with com/example/platform/impl/ExampleSqlDriver;

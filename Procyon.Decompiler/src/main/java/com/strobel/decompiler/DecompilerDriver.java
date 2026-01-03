@@ -64,7 +64,7 @@ import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
 public class DecompilerDriver {
-    public static void main(final String[] args) {
+    public static void main(final String... args) {
         final CommandLineOptions options = new CommandLineOptions();
         final JCommander jCommander;
         final List<String> typeNames;

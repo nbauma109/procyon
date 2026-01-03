@@ -1,0 +1,16 @@
+module com.example.platform {
+    requires java.base mandated;
+    requires java.sql;
+    requires transitive java.xml;
+    requires static java.compiler;
+    
+    exports com.example.platform.api;
+    exports com.example.platform.internal to java.logging;
+    
+    opens com.example.platform.model;
+    opens com.example.platform.persistence to java.sql;
+    
+    uses java.sql.Driver;
+    
+    provides java.sql.Driver with com.example.platform.impl.ExampleSqlDriver;
+}
