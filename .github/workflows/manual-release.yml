@@ -97,6 +97,7 @@ jobs:
           release_sed_expr="s/(private[[:space:]]+static[[:space:]]+final[[:space:]]+String[[:space:]]+VERSION[[:space:]]*=[[:space:]]*\")[^\"]+(\")/\1${release_version}\2/"
           next_sed_expr="s/(private[[:space:]]+static[[:space:]]+final[[:space:]]+String[[:space:]]+VERSION[[:space:]]*=[[:space:]]*\")[^\"]+(\")/\1${next_snapshot_version}\2/"
 
+          # We set the version to the release version (remove -SNAPSHOT), then commit and push.
           sed -i -E "${release_sed_expr}" "${VERSION_FILE}"
 
           if git diff --quiet; then
@@ -116,6 +117,7 @@ jobs:
           git tag "${release_version}"
           git push origin "refs/tags/${release_version}"
 
+          # We set the version to the next development snapshot, then commit and push.
           sed -i -E "${next_sed_expr}" "${VERSION_FILE}"
 
           if git diff --quiet; then
