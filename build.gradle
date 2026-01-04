@@ -39,7 +39,7 @@ allprojects {
     apply plugin: 'jacoco'
 
     jacoco {
-        toolVersion = '0.8.12'
+        toolVersion = '0.8.14'
     }
 
     buildDir = rootDir.canonicalPath + "/build/" + rootProject.relativePath(projectDir.canonicalPath)
