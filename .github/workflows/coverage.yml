@@ -35,5 +35,5 @@ jobs:
         with:
           fail_ci_if_error: true
           verbose: true
-		  files: build/reports/jacoco/testCodeCoverageReport/testCodeCoverageReport.xml
+          files: build/reports/jacoco/testCodeCoverageReport/testCodeCoverageReport.xml
 
