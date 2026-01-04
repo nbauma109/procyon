@@ -1,9 +1,34 @@
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.api.tasks.testing.logging.TestLogEvent
 
-apply plugin: 'java'
-apply plugin: 'maven'
-apply plugin: 'idea'
+plugins {
+    id 'java'
+    id 'maven-publish'
+    id 'idea'
+    id 'jacoco'
+    id 'jacoco-report-aggregation'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+repositories {
+    mavenCentral()
+}
+
+jacoco {
+    toolVersion = '0.8.14'
+}
+
+dependencies {
+    jacocoAggregation project(':Procyon.Core')
+    jacocoAggregation project(':Procyon.CompilerTools')
+    jacocoAggregation project(':Procyon.Decompiler')
+    jacocoAggregation project(':Procyon.Expressions')
+    jacocoAggregation project(':Procyon.Reflection')
+}
 
 archivesBaseName = 'procyon'
 
@@ -35,7 +60,7 @@ final def procyonVersion = getProcyonVersion()
 allprojects {
     apply plugin: 'java'
     apply plugin: 'idea'
-    apply plugin: 'maven'
+    apply plugin: 'maven-publish'
     apply plugin: 'jacoco'
 
     jacoco {
@@ -47,14 +72,15 @@ allprojects {
     version procyonVersion
 
     group 'com.github.mstrobel'
-    sourceCompatibility = 1.8    // JDK version
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
 
     repositories {
         mavenCentral()
     }
 
     dependencies {
-        testCompile 'junit:junit:4.13.2'
+        testImplementation 'junit:junit:4.13.2'
     }
 }
 
@@ -63,10 +89,9 @@ allprojects {
 //
 rootProject.tasks.each { it.enabled = false }
 rootProject.tasks.withType(DefaultTask).each { it.enabled = true }
-rootProject.uploadArchives.enabled = false
 
 subprojects {
-    apply plugin: 'maven'
+    apply plugin: 'maven-publish'
     apply plugin: 'signing'
 
     final boolean shouldSign = "true".equalsIgnoreCase(System.properties.getProperty("procyon.signing.enabled"))
@@ -119,17 +144,6 @@ subprojects {
                 }
             }
         }
-
-        finalizedBy jacocoTestReport
-    }
-
-    jacocoTestReport {
-        dependsOn test
-        reports {
-            xml.enabled true
-            html.enabled true
-            csv.enabled false
-        }
     }
 
     if (project.name == "Procyon.Decompiler") {
@@ -169,78 +183,79 @@ subprojects {
             }
         }
 
-        uploadArchives {
-            repositories.mavenDeployer {
-                if (shouldSign) {
-                    beforeDeployment { MavenDeployment deployment ->
-                        signing.signPom(deployment)
-                    }
-                }
-
-                snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots") {
-                    authentication(userName: project.properties.get("procyon.sonatype.username"),
-                                   password: project.properties.get("procyon.sonatype.password"))
-                }
-
-                repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2") {
-                    authentication(userName: project.properties.get("procyon.sonatype.username"),
-                                   password: project.properties.get("procyon.sonatype.password"))
-                }
-
-                pom {
+        publishing {
+            publications {
+                mavenJava(MavenPublication) {
+                    from components.java
+        
+                    artifact jar
+                    artifact javadocJar
+                    artifact sourcesJar
+        
                     groupId = project.group
-                    version = project.version
                     artifactId = project.archivesBaseName
-
-                    project {
-                        name project.archivesBaseName
-                        packaging 'jar'
-                        description 'Procyon'
-                        url 'https://github.com/mstrobel/procyon'
-
+                    version = project.version
+        
+                    pom {
+                        name.set(project.archivesBaseName)
+                        description.set('Procyon')
+                        url.set('https://github.com/mstrobel/procyon')
+        
                         scm {
-                            url 'https://github.com/mstrobel/procyon'
-                            connection 'scm:git:https://github.com/mstrobel/procyon.git'
-                            developerConnection 'scm:git:https://mstrobel@github.com/mstrobel/procyon.git'
+                            url.set('https://github.com/mstrobel/procyon')
+                            connection.set('scm:git:https://github.com/mstrobel/procyon.git')
+                            developerConnection.set('scm:git:https://mstrobel@github.com/mstrobel/procyon.git')
                         }
-
+        
                         issueManagement {
-                            system 'github'
-                            url 'https://github.com/mstrobel/procyon/issues'
+                            system.set('github')
+                            url.set('https://github.com/mstrobel/procyon/issues')
                         }
-
+        
                         licenses {
                             license {
-                                name 'The Apache Software License, Version 2.0'
-                                url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
-                                distribution 'repo'
+                                name.set('The Apache Software License, Version 2.0')
+                                url.set('http://www.apache.org/licenses/LICENSE-2.0.txt')
+                                distribution.set('repo')
                             }
                         }
-
+        
                         developers {
                             developer {
-                                id 'mstrobel'
-                                name 'Mike Strobel'
-                                roles {
-                                    role 'owner'
-                                    role 'packager'
-                                    role 'developer'
-                                }
-                            }
-                        }
-
-                        dependencies {
-                            dependency {
-                                groupId 'junit'
-                                artifactId 'junit'
-                                version '4.11'
-                                scope 'test'
-//                                optional = true
+                                id.set('mstrobel')
+                                name.set('Mike Strobel')
                             }
                         }
                     }
                 }
             }
+        
+            repositories {
+                maven {
+                    name = 'sonatypeSnapshots'
+                    url = uri('https://oss.sonatype.org/content/repositories/snapshots')
+                    credentials {
+                        username = project.findProperty('procyon.sonatype.username')
+                        password = project.findProperty('procyon.sonatype.password')
+                    }
+                }
+        
+                maven {
+                    name = 'sonatypeReleases'
+                    url = uri('https://oss.sonatype.org/service/local/staging/deploy/maven2')
+                    credentials {
+                        username = project.findProperty('procyon.sonatype.username')
+                        password = project.findProperty('procyon.sonatype.password')
+                    }
+                }
+            }
         }
+
+        if (shouldSign) {
+            signing {
+                sign publishing.publications.mavenJava
+            }
+        }
+
     }
 }

@@ -28,10 +28,12 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Run tests and generate merged JaCoCo report
-        run: ./gradlew --no-daemon jacocoTestReport
+        run: ./gradlew --no-daemon testCodeCoverageReport
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           fail_ci_if_error: true
           verbose: true
+		  files: build/reports/jacoco/testCodeCoverageReport/testCodeCoverageReport.xml
+
