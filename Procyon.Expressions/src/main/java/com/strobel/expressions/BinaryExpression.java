@@ -208,6 +208,7 @@ public class BinaryExpression extends Expression {
             case AndAssign:
             case OrAssign:
             case RightShiftAssign:
+            case UnsignedRightShiftAssign:
             case LeftShiftAssign:
             case ExclusiveOrAssign:
                 return true;
@@ -235,6 +236,8 @@ public class BinaryExpression extends Expression {
                 return ExpressionType.Or;
             case RightShiftAssign:
                 return ExpressionType.RightShift;
+            case UnsignedRightShiftAssign:
+            	return ExpressionType.UnsignedRightShift;
             case LeftShiftAssign:
                 return ExpressionType.LeftShift;
             case ExclusiveOrAssign:

@@ -950,6 +950,110 @@ public final class CompilerTests extends AbstractExpressionTest {
     }
 
     @Test
+    public void testMakeBinaryExclusiveOrAndShifts() throws Throwable {
+        assertEquals(6, evaluateBinaryInt(ExpressionType.ExclusiveOr, 5, 3));
+        assertEquals(8, evaluateBinaryInt(ExpressionType.LeftShift, 1, 3));
+        assertEquals(-4, evaluateBinaryInt(ExpressionType.RightShift, -16, 2));
+        assertEquals(1073741820, evaluateBinaryInt(ExpressionType.UnsignedRightShift, -16, 2));
+    }
+    
+    @Test
+    public void testMakeBinaryArrayIndex() throws Throwable {
+        final ParameterExpression array = parameter(Type.of(int[].class), "a");
+        final ParameterExpression index = parameter(PrimitiveTypes.Integer, "i");
+    
+        final LambdaExpression<?> e = lambda(
+            makeBinary(
+                ExpressionType.ArrayIndex,
+                array,
+                index
+            ),
+            array,
+            index
+        );
+    
+        final Delegate<?> delegate = e.compileDelegate();
+    
+        assertEquals(11, delegate.invokeDynamic(new int[] { 7, 11, 13 }, 1));
+        assertEquals(13, delegate.invokeDynamic(new int[] { 7, 11, 13 }, 2));
+    }
+    
+    @Test
+    public void testMakeBinaryAssignmentOperators() throws Throwable {
+        assertEquals(42, evaluateSimpleAssign(42));
+    
+        assertEquals(15, evaluateCompoundAssign(ExpressionType.AddAssign, 10, 5));
+        assertEquals(7, evaluateCompoundAssign(ExpressionType.SubtractAssign, 10, 3));
+        assertEquals(20, evaluateCompoundAssign(ExpressionType.MultiplyAssign, 10, 2));
+        assertEquals(5, evaluateCompoundAssign(ExpressionType.DivideAssign, 20, 4));
+        assertEquals(2, evaluateCompoundAssign(ExpressionType.ModuloAssign, 20, 6));
+    
+        assertEquals(8, evaluateCompoundAssign(ExpressionType.AndAssign, 12, 10));
+        assertEquals(14, evaluateCompoundAssign(ExpressionType.OrAssign, 12, 10));
+        assertEquals(6, evaluateCompoundAssign(ExpressionType.ExclusiveOrAssign, 12, 10));
+    
+        assertEquals(12, evaluateCompoundAssign(ExpressionType.LeftShiftAssign, 3, 2));
+        assertEquals(-4, evaluateCompoundAssign(ExpressionType.RightShiftAssign, -8, 1));
+        assertEquals(2147483644, evaluateCompoundAssign(ExpressionType.UnsignedRightShiftAssign, -8, 1));
+    }
+    
+    private static int evaluateBinaryInt(final ExpressionType operator, final int leftValue, final int rightValue) throws Throwable {
+        final LambdaExpression<?> e = lambda(
+            makeBinary(
+                operator,
+                constant(leftValue),
+                constant(rightValue)
+            )
+        );
+    
+        final Delegate<?> delegate = e.compileDelegate();
+        return (int) delegate.invokeDynamic();
+    }
+    
+    private static int evaluateSimpleAssign(final int assignedValue) throws Throwable {
+        final ParameterExpression x = variable(PrimitiveTypes.Integer, "x");
+    
+        final LambdaExpression<?> e = lambda(
+            block(
+                new ParameterExpressionList(x),
+                makeBinary(
+                    ExpressionType.Assign,
+                    x,
+                    constant(assignedValue)
+                ),
+                x
+            )
+        );
+    
+        final Delegate<?> delegate = e.compileDelegate();
+        return (int) delegate.invokeDynamic();
+    }
+    
+    private static int evaluateCompoundAssign(final ExpressionType operator, final int initialValue, final int operandValue) throws Throwable {
+        final ParameterExpression x = variable(PrimitiveTypes.Integer, "x");
+    
+        final LambdaExpression<?> e = lambda(
+            block(
+                new ParameterExpressionList(x),
+                makeBinary(
+                    ExpressionType.Assign,
+                    x,
+                    constant(initialValue)
+                ),
+                makeBinary(
+                    operator,
+                    x,
+                    constant(operandValue)
+                ),
+                x
+            )
+        );
+    
+        final Delegate<?> delegate = e.compileDelegate();
+        return (int) delegate.invokeDynamic();
+    }
+    
+    @Test
     public void testCompileToMethod() throws Exception {
         final Expression out = field(null, Type.of(System.class).getField("out"));
 

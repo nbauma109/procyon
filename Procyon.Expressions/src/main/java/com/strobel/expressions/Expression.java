@@ -1680,13 +1680,13 @@ public abstract class Expression {
             final Type<?> rightType = right.getType();
 
             if (TypeUtils.isArithmetic(leftType) && TypeUtils.isIntegral(rightType)) {
-                return new SimpleBinaryExpression(ExpressionType.RightShift, left, right, performBinaryNumericPromotion(leftType, rightType));
+                return new SimpleBinaryExpression(ExpressionType.UnsignedRightShift, left, right, performBinaryNumericPromotion(leftType, rightType));
             }
 
             throw Error.binaryOperatorNotDefined(ExpressionType.UnsignedRightShift, left.getType(), right.getType());
         }
 
-        return getMethodBasedBinaryOperator(ExpressionType.RightShift, left, right, method);
+        return getMethodBasedBinaryOperator(ExpressionType.UnsignedRightShift, left, right, method);
     }
 
     public static BinaryExpression and(final Expression left, final Expression right) {

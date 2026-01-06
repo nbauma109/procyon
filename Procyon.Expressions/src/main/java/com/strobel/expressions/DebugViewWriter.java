@@ -562,6 +562,7 @@ final class DebugViewWriter extends ExpressionVisitor {
             case MultiplyAssign:
             case LeftShiftAssign:
             case RightShiftAssign:
+            case UnsignedRightShiftAssign:
             case AndAssign:
             case OrAssign:
             case Coalesce:
