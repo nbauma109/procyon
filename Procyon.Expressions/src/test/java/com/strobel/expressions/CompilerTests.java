@@ -928,6 +928,144 @@ public final class CompilerTests extends AbstractExpressionTest {
     }
 
     @Test
+    public void testMakeUnarySimpleOperators() throws Throwable {
+        assertEquals(-7, evaluateUnaryInt(ExpressionType.Negate, 7));
+        assertEquals(-6, evaluateUnaryInt(ExpressionType.OnesComplement, 5));
+        assertEquals(-9, evaluateUnaryInt(ExpressionType.UnaryPlus, -9));
+        assertEquals(11, evaluateUnaryInt(ExpressionType.Increment, 10));
+        assertEquals(9, evaluateUnaryInt(ExpressionType.Decrement, 10));
+
+        assertFalse(evaluateUnaryBoolean(ExpressionType.Not, true));
+        assertTrue(evaluateUnaryBoolean(ExpressionType.Not, false));
+
+        assertTrue(evaluateUnaryBoolean(ExpressionType.IsTrue, true));
+        assertFalse(evaluateUnaryBoolean(ExpressionType.IsTrue, false));
+        assertTrue(evaluateUnaryBoolean(ExpressionType.IsFalse, false));
+        assertFalse(evaluateUnaryBoolean(ExpressionType.IsFalse, true));
+    }
+
+    @Test
+    public void testMakeUnaryArrayLengthConvertAndUnbox() throws Throwable {
+        assertEquals(3, evaluateUnaryArrayLength(new int[] { 1, 2, 3 }));
+
+        final Object converted = evaluateUnary(
+            ExpressionType.Convert,
+            constant(5),
+            PrimitiveTypes.Long
+        );
+        assertEquals(5L, ((Number) converted).longValue());
+
+        final Object unboxed = evaluateUnary(
+            ExpressionType.Unbox,
+            constant(Integer.valueOf(7), Types.Integer),
+            PrimitiveTypes.Integer
+        );
+        assertEquals(7, ((Number) unboxed).intValue());
+    }
+
+    @Test
+    public void testMakeUnaryThrow() throws Throwable {
+        final LambdaExpression<Runnable> e = lambda(
+            Types.Runnable,
+            makeUnary(
+                ExpressionType.Throw,
+                constant(TestRuntimeException, Types.RuntimeException),
+                PrimitiveTypes.Void,
+                null
+            )
+        );
+
+        final Runnable delegate = e.compile();
+
+        try {
+            delegate.run();
+            fail("RuntimeException should have been thrown.");
+        }
+        catch (Throwable t) {
+            assertSame(TestRuntimeException, t);
+        }
+    }
+
+    @Test
+    public void testMakeUnaryNullChecks() throws Throwable {
+        final ParameterExpression s = parameter(Types.String, "s");
+
+        final LambdaExpression<?> isNull = lambda(
+            makeUnary(ExpressionType.IsNull, s, null, null),
+            s
+        );
+
+        final LambdaExpression<?> isNotNull = lambda(
+            makeUnary(ExpressionType.IsNotNull, s, null, null),
+            s
+        );
+
+        final Delegate<?> isNullDelegate = isNull.compileDelegate();
+        final Delegate<?> isNotNullDelegate = isNotNull.compileDelegate();
+
+        assertEquals(Boolean.TRUE, isNullDelegate.invokeDynamic((Object) null));
+        assertEquals(Boolean.FALSE, isNullDelegate.invokeDynamic("x"));
+
+        assertEquals(Boolean.FALSE, isNotNullDelegate.invokeDynamic((Object) null));
+        assertEquals(Boolean.TRUE, isNotNullDelegate.invokeDynamic("x"));
+    }
+
+    @Test
+    public void testMakeUnaryPreAndPostAssignOperators() throws Throwable {
+        assertArrayEquals(new int[] { 11, 11 }, evaluateUnaryAssignment(ExpressionType.PreIncrementAssign, 10));
+        assertArrayEquals(new int[] { 10, 11 }, evaluateUnaryAssignment(ExpressionType.PostIncrementAssign, 10));
+        assertArrayEquals(new int[] { 9, 9 }, evaluateUnaryAssignment(ExpressionType.PreDecrementAssign, 10));
+        assertArrayEquals(new int[] { 10, 9 }, evaluateUnaryAssignment(ExpressionType.PostDecrementAssign, 10));
+    }
+
+    private static boolean evaluateUnaryBoolean(final ExpressionType operator, final boolean operandValue) throws Throwable {
+        final Object result = evaluateUnary(operator, constant(operandValue), null);
+        return Boolean.TRUE.equals(result);
+    }
+
+    private static int evaluateUnaryInt(final ExpressionType operator, final int operandValue) throws Throwable {
+        final Object result = evaluateUnary(operator, constant(operandValue), null);
+        return ((Number) result).intValue();
+    }
+
+    private static int evaluateUnaryArrayLength(final int[] array) throws Throwable {
+        final Object result = evaluateUnary(
+            ExpressionType.ArrayLength,
+            constant(array, Type.of(int[].class)),
+            null
+        );
+        return ((Number) result).intValue();
+    }
+
+    private static int[] evaluateUnaryAssignment(final ExpressionType operator, final int initialValue) throws Throwable {
+        final ParameterExpression x = variable(PrimitiveTypes.Integer, "x");
+
+        final LambdaExpression<?> e = lambda(
+            block(
+                new ParameterExpressionList(x),
+                makeBinary(ExpressionType.Assign, x, constant(initialValue)),
+                newArrayInit(
+                    PrimitiveTypes.Integer,
+                    makeUnary(operator, x, null, null),
+                    x
+                )
+            )
+        );
+
+        final Delegate<?> delegate = e.compileDelegate();
+        return (int[]) delegate.invokeDynamic();
+    }
+
+    private static Object evaluateUnary(final ExpressionType operator, final Expression operand, final Type<?> type) throws Throwable {
+        final LambdaExpression<?> e = lambda(
+            makeUnary(operator, operand, type, null)
+        );
+
+        final Delegate<?> delegate = e.compileDelegate();
+        return delegate.invokeDynamic();
+    }
+
+    @Test
     public void testBinaryNumericPromotion() throws Exception {
         final LambdaExpression<ISimpleTest> lambda = lambda(
             Type.of(ISimpleTest.class),
