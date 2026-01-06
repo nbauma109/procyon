@@ -41,7 +41,6 @@ import static java.lang.String.format;
  * The base type for all nodes in Expression Trees.
  * @author Mike Strobel
  */
-@SuppressWarnings({ "unchecked", "UnusedDeclaration", "ConstantConditions", "SameParameterValue" })
 public abstract class Expression {
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1498,8 +1497,6 @@ public abstract class Expression {
             throw Error.coalesceUsedOnNonNullableType();
         }
 
-        final Type<?> delegateType = conversion.getType();
-
         final MethodInfo method = getInvokeMethod(conversion);
 
         if (method.getReturnType() == PrimitiveTypes.Void) {
@@ -1777,8 +1774,6 @@ public abstract class Expression {
         final Type<?> leftType = left.getType();
         final Type<?> rightType = right.getType();
 
-        Type<?> returnType;
-
         if (method == null) {
             if (TypeUtils.hasIdentityPrimitiveOrBoxingConversion(leftType, rightType) &&
                 TypeUtils.hasIdentityPrimitiveOrBoxingConversion(left.getType(), PrimitiveTypes.Boolean)) {
@@ -1810,8 +1805,6 @@ public abstract class Expression {
 
         final Type<?> leftType = left.getType();
         final Type<?> rightType = right.getType();
-
-        Type<?> returnType;
 
         if (method == null) {
             if (TypeUtils.hasIdentityPrimitiveOrBoxingConversion(leftType, rightType) &&
@@ -2855,7 +2848,6 @@ public abstract class Expression {
 
             // Validate that the switch value's type matches the comparison method's
             // left hand side parameter type.
-            final ParameterInfo leftArg = parameters.get(0);
             final ParameterInfo rightArg = parameters.get(1);
 
             for (int i = 0, n = cases.size(); i < n; i++) {
@@ -3039,24 +3031,6 @@ public abstract class Expression {
         }
     }
 
-    private static void verifyCanWrite(final Iterable<? extends Expression> items, final String parameterName) {
-        if (items == null) {
-            return;
-        }
-
-        if (items instanceof List) {
-            final List<? extends Expression> list = (List<? extends Expression>)items;
-
-            for (int i = 0, count = list.size(); i < count; i++) {
-                verifyCanWrite(list.get(i), parameterName);
-            }
-        }
-
-        for (final Expression item : items) {
-            verifyCanWrite(item, parameterName);
-        }
-    }
-
     static void validateVariables(final ParameterExpressionList varList, final String collectionName) {
         if (varList.isEmpty()) {
             return;
@@ -3120,23 +3094,6 @@ public abstract class Expression {
         if (u != null) {
             validateOperator(u.getMethod());
             return u;
-        }
-
-        throw Error.unaryOperatorNotDefined(unaryType, operand.getType());
-    }
-
-    private static UnaryExpression getMethodBasedUnaryOperatorOrThrow(
-        final ExpressionType unaryType,
-        final Expression operand,
-        final String... methodNames) {
-
-        for (final String methodName : methodNames) {
-            final UnaryExpression u = getMethodBasedUnaryOperator(unaryType, methodName, operand);
-
-            if (u != null) {
-                validateOperator(u.getMethod());
-                return u;
-            }
         }
 
         throw Error.unaryOperatorNotDefined(unaryType, operand.getType());
@@ -3626,7 +3583,6 @@ public abstract class Expression {
         }
 
         final Type<?> returnType = method.getReturnType();
-        final Type<?> parameterType = parameters.get(0).getParameterType();
         final Type<?> rightType = right.getType();
 
         if (parameterIsAssignable(parameters.get(0).getParameterType(), rightType)) {
@@ -3651,8 +3607,6 @@ public abstract class Expression {
         }
 
         final Type<?> returnType = method.getReturnType();
-        final Type<?> leftParameterType = parameters.get(0).getParameterType();
-        final Type<?> rightParameterType = parameters.get(1).getParameterType();
 
         final Type<?> leftType = left.getType();
         final Type<?> rightType = right.getType();
@@ -3679,22 +3633,6 @@ public abstract class Expression {
         }
 
         throw Error.binaryOperatorNotDefined(binaryType, left.getType(), right.getType());
-    }
-
-    private static BinaryExpression getMethodBasedAssignOperator(
-        final ExpressionType binaryType,
-        final String name,
-        final Expression left,
-        final Expression right,
-        final LambdaExpression<?> conversion) {
-
-        final MethodInfo method = getBinaryOperatorMethod(binaryType, left.getType(), right.getType(), name);
-
-        if (method != null) {
-            return new MethodBinaryExpression(binaryType, left, right, method.getReturnType(), method);
-        }
-
-        return null;
     }
 
     private static BinaryExpression getMethodBasedAssignOperatorOrThrow(
@@ -3763,7 +3701,6 @@ public abstract class Expression {
         final MethodInfo method,
         final ExpressionType nodeType) {
 
-        final Type<?> interfaceType = conversion.getType();
         final MethodInfo invokeMethod = getInvokeMethod(conversion);
         final ParameterList parameters = invokeMethod.getParameters();
 
@@ -4005,16 +3942,6 @@ public abstract class Expression {
         }
     }
 
-    private static void validateGotoType(final Type<?> expectedType, final Expression value, final String valueParameter) {
-        verifyCanRead(value, valueParameter);
-
-        if (expectedType != PrimitiveTypes.Void &&
-            !TypeUtils.areReferenceAssignable(expectedType, value.getType())) {
-
-            throw Error.expressionTypeDoesNotMatchLabel(value.getType(), expectedType);
-        }
-    }
-
     private static void validateTryAndCatchHaveSameType(
         final Type<?> type,
         final Expression tryBody,
@@ -4164,63 +4091,6 @@ public abstract class Expression {
         }
 
         return result;
-    }
-
-    private static int findBestMethod(
-        final MemberList<?> methods,
-        final TypeList typeArgs,
-        final ExpressionList<? extends Expression> arguments) {
-
-        int count = 0;
-        int bestMethodIndex = -1;
-        MethodInfo bestMethod = null;
-
-        for (int i = 0, n = methods.size(); i < n; i++) {
-            final MethodInfo method = applyTypeArgs((MethodInfo)methods.get(i), typeArgs);
-            if (method != null && isCompatible(method, arguments)) {
-                // Favor public over non-public methods.
-                if (bestMethod == null || (!bestMethod.isPublic() && method.isPublic())) {
-                    bestMethodIndex = i;
-                    bestMethod = method;
-                    count = 1;
-                }
-                else {
-                    // Only count it as additional method if they both public or both non-public.
-                    if (bestMethod.isPublic() == method.isPublic()) {
-                        count++;
-                    }
-                }
-            }
-        }
-
-        if (count > 1)
-            return -2;
-
-        return bestMethodIndex;
-    }
-
-    private static boolean isCompatible(final MethodBase m, final ExpressionList<? extends Expression> arguments) {
-        VerifyArgument.noNullElements(arguments, "arguments");
-
-        final ParameterList parameters = m.getParameters();
-
-        if (parameters.size() != arguments.size()) {
-            return false;
-        }
-
-        for (int i = 0, n = arguments.size(); i < n; i++) {
-            final Expression argument = arguments.get(i);
-            final Type<?> argumentType = argument.getType();
-            final Type<?> parameterType = parameters.get(i).getParameterType();
-
-            if (!TypeUtils.areReferenceAssignable(parameterType, argumentType) &&
-                !(TypeUtils.isSameOrSubType(Type.of(LambdaExpression.class), parameterType) &&
-                  parameterType.isAssignableFrom(argument.getType()))) {
-
-                return false;
-            }
-        }
-        return true;
     }
 
     private static MethodInfo applyTypeArgs(final MethodInfo m, final TypeList typeArgs) {
