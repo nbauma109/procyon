@@ -81,7 +81,7 @@ public final class RedundantCastUtility {
             operand = ((ParenthesizedExpression) operand).getExpression();
         }
 
-        if (operand.isNull()) {
+        if (operand.isNull() || restoresResultType(operand)) {
             return;
         }
 
@@ -94,6 +94,22 @@ public final class RedundantCastUtility {
         }
 
         toBeReplaced.replaceWith(operand);
+    }
+
+    /**
+     * Casting an argument to select a method widens the type the compiler infers for a result which
+     * depends on it, so that a cast of that result is needed although it looks redundant here.
+     */
+    private static boolean restoresResultType(final Expression operand) {
+        if (operand instanceof InvocationExpression) {
+            for (final Expression argument : ((InvocationExpression) operand).getArguments()) {
+                if (argument.getUserData(Keys.SELECTS_OVERLOAD) != null) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     @Nullable

@@ -1328,9 +1328,16 @@ public class AstMethodBodyBuilder {
             final TypeReference aType = resolvedArgument.getType();
             final TypeReference pType = p.getParameterType();
 
-            if (isCastRequired(pType, aType, true) &&
-                !isForeignTypeVariable(pType) &&
-                !isTypedByTarget(method, argument, pType, aType)) {
+            final TypeReference boundType = overloadSelectingBound(method, p.getPosition(), aType);
+
+            if (boundType != null) {
+                final CastExpression cast = new CastExpression(_astBuilder.convertType(boundType, options), argument);
+                cast.putUserData(Keys.SELECTS_OVERLOAD, true);
+                arguments.set(i, cast);
+            }
+            else if (isCastRequired(pType, aType, true) &&
+                     !isForeignTypeVariable(pType) &&
+                     !isTypedByTarget(method, argument, pType, aType)) {
 
                 arguments.set(
                     i,
@@ -1504,28 +1511,70 @@ public class AstMethodBodyBuilder {
                _context.getCurrentMethod().findTypeVariable(type.getSimpleName()) != type;
     }
 
-    private static boolean isOverloaded(final MethodReference method) {
-        final TypeDefinition declaringType = method != null ? method.getDeclaringType().resolve() : null;
+    /**
+     * Returns the type to which an argument of a generic parameter must be cast to select the invoked
+     * method, or {@code null} if no cast is needed: the argument may be accepted by the corresponding
+     * parameter of another overload, which the compiler would then prefer, e.g. when
+     * {@code append(StringBuffer)} delegates to {@code <B extends Appendable> append(B)}.
+     */
+    private TypeReference overloadSelectingBound(
+        final MethodReference method,
+        final int position,
+        final TypeReference argumentType) {
 
-        if (declaringType == null) {
-            return true;
+        final MethodDefinition definition = method.isConstructor() ? null : method.resolve();
+
+        if (definition == null) {
+            return null;
         }
 
-        final List<MethodReference> candidates = MetadataHelper.findMethods(
-            declaringType,
-            MetadataFilters.matchName(method.getName())
-        );
+        final TypeReference declared = definition.getParameters().get(position).getParameterType();
 
-        final int parameterCount = method.getParameters().size();
-        int matches = 0;
+        if (!isForeignTypeVariable(declared)) {
+            return null;
+        }
 
-        for (final MethodReference candidate : candidates) {
-            if (candidate.getParameters().size() == parameterCount) {
-                ++matches;
+        final String signature = definition.getErasedSignature();
+
+        for (final MethodReference candidate : overloads(definition)) {
+            final TypeReference other = candidate.getParameters().get(position).getParameterType();
+
+            if (!candidate.getErasedSignature().equals(signature) &&
+                !other.isGenericParameter() &&
+                MetadataHelper.isAssignableFrom(MetadataHelper.erase(other), argumentType)) {
+
+                return MetadataHelper.getUpperBound(declared);
             }
         }
 
-        return matches > 1;
+        return null;
+    }
+
+    private static boolean isOverloaded(final MethodReference method) {
+        return method == null ||
+               method.getDeclaringType().resolve() == null ||
+               overloads(method).size() > 1;
+    }
+
+    /**
+     * Returns the methods, including the given one, which have its name and number of parameters.
+     */
+    private static List<MethodReference> overloads(final MethodReference method) {
+        final List<MethodReference> candidates = MetadataHelper.findMethods(
+            method.getDeclaringType(),
+            MetadataFilters.matchName(method.getName())
+        );
+
+        final List<MethodReference> overloads = new ArrayList<>();
+        final int parameterCount = method.getParameters().size();
+
+        for (final MethodReference candidate : candidates) {
+            if (candidate.getParameters().size() == parameterCount) {
+                overloads.add(candidate);
+            }
+        }
+
+        return overloads;
     }
 
     @SuppressWarnings("SameParameterValue")

@@ -193,6 +193,27 @@ public class GenericsTests extends DecompilerTest {
             "}\n"
         );
     }
+
+    @Test
+    public void testCastToTheBoundWhichSelectsTheGenericOverload() {
+        verifyOutput(
+            BoundOverloads.class,
+            defaultSettings(),
+            "class BoundOverloads {\n" +
+            "    <B extends Appendable> B append(final B buffer) {\n" +
+            "        return buffer;\n" +
+            "    }\n" +
+            "    StringBuffer append(final StringBuffer buffer) {\n" +
+            "        return (StringBuffer)this.append((Appendable)buffer);\n" +
+            "    }\n" +
+            "    <T> void accept(final T value) {\n" +
+            "    }\n" +
+            "    void accept(final String value) {\n" +
+            "        this.accept((Object)value);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
 }@SuppressWarnings("unused") // decompiler fixture
 class StreamPipelines {
     List<Method> methods(final Class<?> c) {
@@ -279,5 +300,23 @@ class ForeignTypeVariables {
 
     static void literal(final boolean flag) {
         match(flag, boxed(true));
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class BoundOverloads {
+    <B extends Appendable> B append(final B buffer) {
+        return buffer;
+    }
+
+    StringBuffer append(final StringBuffer buffer) {
+        return (StringBuffer) append((Appendable) buffer);
+    }
+
+    <T> void accept(final T value) {
+    }
+
+    void accept(final String value) {
+        accept((Object) value);
     }
 }

@@ -39,6 +39,8 @@ public final class Keys {
     public final static Key<ModuleReference> MODULE_REFERENCE = Key.create("ModuleReference");
     public final static Key<TypeReference> TYPE_REFERENCE = Key.create("TypeReference");
     public final static Key<TypeReference> ANONYMOUS_BASE_TYPE_REFERENCE = Key.create("AnonymousBaseTypeReference");
+    /** Marks a cast without which an invocation would select another method. */
+    public final static Key<Boolean> SELECTS_OVERLOAD = Key.create("SelectsOverload");
     public final static Key<DynamicCallSite> DYNAMIC_CALL_SITE = Key.create("DynamicCallSite");
     public final static Key<AstBuilder> AST_BUILDER = Key.create("AstBuilder");
     public final static Key<Object> CONSTANT_VALUE = Key.create("ConstantValue");
