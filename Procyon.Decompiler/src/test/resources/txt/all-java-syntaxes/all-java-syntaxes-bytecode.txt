@@ -2926,7 +2926,7 @@ interface demo.AllJavaSyntaxes.AdvancedInterface
       -----  ------  ----  ----  ----------------------------------------
       0      7       0     this  Ldemo/AllJavaSyntaxes$AdvancedInterface;
   public static java.lang.String staticMethod();
-    Flags: PUBLIC, DEFAULT, STATIC
+    Flags: PUBLIC, STATIC
     Code:
       stack=1, locals=0, arguments=0
            0: ldc             "static"
@@ -2935,7 +2935,7 @@ interface demo.AllJavaSyntaxes.AdvancedInterface
       Start  Length  Slot  Name  Signature
       -----  ------  ----  ----  ---------
   private java.lang.String privateHelper();
-    Flags: PRIVATE, DEFAULT
+    Flags: PRIVATE
     Code:
       stack=1, locals=1, arguments=0
            0: ldc             "private"

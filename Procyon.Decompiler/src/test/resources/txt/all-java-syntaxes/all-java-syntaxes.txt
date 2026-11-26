@@ -592,10 +592,10 @@ public abstract class AllJavaSyntaxes<E extends Comparable<E>> extends ArrayList
         default String defaultMethod() {
             return this.privateHelper();
         }
-        default String staticMethod() {
+        static String staticMethod() {
             return "static";
         }
-        default String privateHelper() {
+        private String privateHelper() {
             return "private";
         }
     }

@@ -1168,7 +1168,10 @@ public final class ClassFileReader extends MetadataReader {
                 methodDefinition.setFlags(Flags.fromStandardFlags(method.accessFlags, Flags.Kind.Method));
                 methodDefinition.setDeclaringType(_typeDefinition);
 
-                if (_typeDefinition.isInterface() && !Flags.testAny(method.accessFlags, Flags.ABSTRACT)) {
+                // Static and private interface methods have a body too, but they are not default methods.
+                if (_typeDefinition.isInterface() &&
+                    !Flags.testAny(method.accessFlags, Flags.ABSTRACT | Flags.STATIC | Flags.PRIVATE)) {
+
                     methodDefinition.setFlags(methodDefinition.getFlags() | Flags.DEFAULT);
                 }
 

@@ -736,7 +736,8 @@ public final class AstBuilder {
             modifiers = Collections.singleton(Flags.Flag.STATIC);
         }
         else if (method.getDeclaringType().isInterface()) {
-            modifiers = Collections.emptySet();
+            // Public and abstract are implied.
+            modifiers = Flags.asFlagSet(method.getFlags() & (Flags.STATIC | Flags.PRIVATE));
         }
         else {
             modifiers = Flags.asFlagSet(scrubAccessModifiers(method.getFlags() & Flags.MethodFlags));
@@ -757,7 +758,7 @@ public final class AstBuilder {
             }
         }
 
-        if (!method.getDeclaringType().isInterface() || method.isTypeInitializer() || method.isDefault()) {
+        if (!method.getDeclaringType().isInterface() || !method.isAbstract()) {
             astMethod.setBody(createMethodBody(method, astMethod.getParameters()));
         }
 
