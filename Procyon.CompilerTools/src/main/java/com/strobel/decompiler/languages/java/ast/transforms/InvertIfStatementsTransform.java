@@ -23,6 +23,10 @@ import com.strobel.decompiler.DecompilerContext;
 import com.strobel.decompiler.languages.java.LineNumberTableConverter;
 import com.strobel.decompiler.languages.java.LineNumberVisitor;
 import com.strobel.decompiler.languages.java.ast.AstNode;
+import com.strobel.decompiler.languages.java.ast.BreakStatement;
+import com.strobel.decompiler.languages.java.ast.ContinueStatement;
+import com.strobel.decompiler.languages.java.ast.ReturnStatement;
+import com.strobel.decompiler.languages.java.ast.ThrowStatement;
 import com.strobel.decompiler.languages.java.ast.BlockStatement;
 import com.strobel.decompiler.languages.java.ast.ContextTrackingVisitor;
 import com.strobel.decompiler.languages.java.ast.Expression;
@@ -51,7 +55,11 @@ public class InvertIfStatementsTransform extends ContextTrackingVisitor<Void> {
         final LineNumberVisitor trueLineNumberVisitor = new LineNumberVisitor(lineNumberTableConverter);
         final LineNumberVisitor nextLineNumbervisitor = new LineNumberVisitor(lineNumberTableConverter);
         final AstNode nextSibling = node.getNextSibling();
-        if ((falseStatement == null || falseStatement.isNull()) && nextSibling != null) {
+        //
+        // The statements which follow become the other branch, so that they are no longer executed
+        // after the current one: this is only equivalent if the latter never completes normally.
+        //
+        if ((falseStatement == null || falseStatement.isNull()) && nextSibling != null && endsWithJump(trueStatement)) {
             trueStatement.acceptVisitor(trueLineNumberVisitor, null);
             nextSibling.acceptVisitor(nextLineNumbervisitor, null);
             if (nextLineNumbervisitor.getMaxLineNumber() != Integer.MIN_VALUE && trueLineNumberVisitor.getMinLineNumber() != Integer.MAX_VALUE
@@ -77,5 +85,17 @@ public class InvertIfStatementsTransform extends ContextTrackingVisitor<Void> {
         }
 
         return null;
+    }
+
+    private static boolean endsWithJump(final Statement statement) {
+        if (statement instanceof BlockStatement) {
+            final Statement last = ((BlockStatement) statement).getStatements().lastOrNullObject();
+            return !last.isNull() && endsWithJump(last);
+        }
+
+        return statement instanceof ReturnStatement ||
+               statement instanceof ThrowStatement ||
+               statement instanceof ContinueStatement ||
+               statement instanceof BreakStatement;
     }
 }
