@@ -1,0 +1,47 @@
+{
+  "commons-codec": {
+    "repo": "https://github.com/apache/commons-codec",
+    "ref": "rel/commons-codec-1.17.1"
+  },
+  "commons-lang": {
+    "repo": "https://github.com/apache/commons-lang",
+    "ref": "rel/commons-lang-3.17.0"
+  },
+  "commons-collections": {
+    "repo": "https://github.com/apache/commons-collections",
+    "ref": "commons-commons-collections-4.4"
+  },
+  "commons-text": {
+    "repo": "https://github.com/apache/commons-text",
+    "ref": "rel/commons-text-1.12.0"
+  },
+  "commons-csv": {
+    "repo": "https://github.com/apache/commons-csv",
+    "ref": "rel/commons-csv-1.11.0"
+  },
+  "commons-compress": {
+    "repo": "https://github.com/apache/commons-compress",
+    "ref": "rel/commons-compress-1.26.2"
+  },
+  "jsoup": {
+    "repo": "https://github.com/jhy/jsoup",
+    "ref": "jsoup-1.17.2"
+  },
+  "joda-time": {
+    "repo": "https://github.com/JodaOrg/joda-time",
+    "ref": "v2.12.7"
+  },
+  "javapoet": {
+    "repo": "https://github.com/square/javapoet",
+    "ref": "javapoet-1.13.0"
+  },
+  "gson": {
+    "repo": "https://github.com/google/gson",
+    "ref": "gson-parent-2.10.1",
+    "module": "gson"
+  },
+  "junit4": {
+    "repo": "https://github.com/junit-team/junit4",
+    "ref": "r4.13.2"
+  }
+}
