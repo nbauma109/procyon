@@ -404,6 +404,12 @@ public class RealignTest extends DecompilerTest {
                     System.out.println(name + 3);
                 }
             });
+            TASKS.add(new Thread("task") {
+                @Override
+                public void run() {
+                    System.out.println(OTHERS[0]);
+                }
+            });
         }
 
         static void register(final String[] names, final java.util.function.Consumer<String> consumer) {
@@ -432,6 +438,14 @@ public class RealignTest extends DecompilerTest {
             "            @Override\n" +
             "            public void accept(final String name) {\n" +
             "                System.out.println(name + 3);\n" +
+            "            }\n" +
+            "        });\n" +
+            "    }\n" +
+            "    static {\n" +
+            "        StaticLambdas.TASKS.add(new Thread(\"task\") {\n" +
+            "            @Override\n" +
+            "            public void run() {\n" +
+            "                System.out.println(StaticLambdas.OTHERS[0]);\n" +
             "            }\n" +
             "        });\n" +
             "    }\n" +
