@@ -879,4 +879,45 @@ public class InnerClassTests extends DecompilerTest {
             "}\n"
         );
     }
+
+    @Test
+    public void testNestedClassCallsPrivateConstructorOfTopLevelClass() {
+        verifyOutput(
+            PrivateConstructorTarget.class,
+            defaultSettings(),
+            "class PrivateConstructorTarget {\n" +
+            "    private PrivateConstructorTarget(final int n) {\n" +
+            "    }\n" +
+            "    private PrivateConstructorTarget() {\n" +
+            "    }\n" +
+            "    static class Factory {\n" +
+            "        PrivateConstructorTarget create(final int n) {\n" +
+            "            return new PrivateConstructorTarget(n);\n" +
+            "        }\n" +
+            "        PrivateConstructorTarget createDefault() {\n" +
+            "            return new PrivateConstructorTarget();\n" +
+            "        }\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class PrivateConstructorTarget {
+    private PrivateConstructorTarget(final int n) {
+    }
+
+    private PrivateConstructorTarget() {
+    }
+
+    static class Factory {
+        PrivateConstructorTarget create(final int n) {
+            return new PrivateConstructorTarget(n);
+        }
+
+        PrivateConstructorTarget createDefault() {
+            return new PrivateConstructorTarget();
+        }
+    }
 }
