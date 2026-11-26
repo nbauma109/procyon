@@ -364,7 +364,7 @@ public class MinMaxLineNumberVisitor extends DepthFirstAstVisitor<Void, Void> {
     @Override
     public Void visitLocalTypeDeclarationStatement(LocalTypeDeclarationStatement node, Void data) {
         updateMinMaxLineNumbers(node.getOffset());
-        return null;
+        return super.visitLocalTypeDeclarationStatement(node, data);
     }
 
     @Override

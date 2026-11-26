@@ -398,6 +398,12 @@ public class RealignTest extends DecompilerTest {
                 System.out.println(name);
             });
             register(OTHERS, name -> System.out.println(name + 2));
+            register(OTHERS, new java.util.function.Consumer<String>() {
+                @Override
+                public void accept(final String name) {
+                    System.out.println(name + 3);
+                }
+            });
         }
 
         static void register(final String[] names, final java.util.function.Consumer<String> consumer) {
@@ -422,6 +428,12 @@ public class RealignTest extends DecompilerTest {
             "        OTHERS = new String[] { \"b\" };\n" +
             "        register(StaticLambdas.NAMES, name -> System.out.println(name));\n" +
             "        register(StaticLambdas.OTHERS, name -> System.out.println(name + 2));\n" +
+            "        register(StaticLambdas.OTHERS, new Consumer<String>() {\n" +
+            "            @Override\n" +
+            "            public void accept(final String name) {\n" +
+            "                System.out.println(name + 3);\n" +
+            "            }\n" +
+            "        });\n" +
             "    }\n" +
             "    static void register(final String[] names, final Consumer<String> consumer) {\n" +
             "        StaticLambdas.TASKS.add(() -> consumer.accept(names[0]));\n" +
