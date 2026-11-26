@@ -194,8 +194,27 @@ class StreamPipelines {
     static class Names extends ArrayList<String> {
         private static final long serialVersionUID = 1L;
     }
-}
 
+    @Test
+    public void testNoCastToTypeVariablesOfTheInvokedMethod() {
+        verifyOutput(
+            ForeignTypeVariables.class,
+            defaultSettings(),
+            "class ForeignTypeVariables\n" +
+            "{\n" +
+            "    static <T> T identity(final T value) {\n" +
+            "        return value;\n" +
+            "    }\n" +
+            "    static void accept(final Boolean flag) {\n" +
+            "    }\n" +
+            "    static void literal() {\n" +
+            "        accept(identity(true));\n" +
+            "    }\n" +
+            "}\n" +
+            ""
+        );
+    }
+}
 @SuppressWarnings("unused") // decompiler fixture
 class TargetTypedArguments {
     static void strings(final List<String> list) {
@@ -242,5 +261,19 @@ class AdaptedReferences {
 
     long castWhichCannotCompile() {
         return Stream.of("abc").map(String::toCharArray).mapToLong(a -> a.length).sum();
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class ForeignTypeVariables {
+    static <T> T identity(final T value) {
+        return value;
+    }
+
+    static void accept(final Boolean flag) {
+    }
+
+    static void literal() {
+        accept(identity(true));
     }
 }

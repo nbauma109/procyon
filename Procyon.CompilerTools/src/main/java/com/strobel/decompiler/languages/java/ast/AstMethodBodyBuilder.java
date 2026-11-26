@@ -1305,6 +1305,7 @@ public class AstMethodBodyBuilder {
             final TypeReference pType = p.getParameterType();
 
             if (isCastRequired(pType, aType, true) &&
+                !isForeignTypeVariable(pType) &&
                 !isTypedByTarget(method, argument, pType, aType)) {
 
                 arguments.set(
@@ -1467,6 +1468,16 @@ public class AstMethodBodyBuilder {
         }
 
         return true;
+    }
+
+    /**
+     * Tells whether a type is a type variable of a generic method other than the one being decompiled.
+     * It cannot be named here, so a cast to it would not compile.
+     */
+    private boolean isForeignTypeVariable(final TypeReference type) {
+        return type.isGenericParameter() &&
+               ((GenericParameter) type).getOwner() instanceof IMethodSignature &&
+               _context.getCurrentMethod().findTypeVariable(type.getSimpleName()) != type;
     }
 
     private static boolean isOverloaded(final MethodReference method) {
