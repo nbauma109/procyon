@@ -173,6 +173,26 @@ public class GenericsTests extends DecompilerTest {
             ""
         );
     }
+
+    @Test
+    public void testNoCastToTypeVariablesOfTheInvokedMethod() {
+        verifyOutput(
+            ForeignTypeVariables.class,
+            defaultSettings(),
+            "class ForeignTypeVariables {\n" +
+            "    static class Box<T> {\n" +
+            "    }\n" +
+            "    static <T> Box<T> boxed(final T value) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    static <T> void match(final T actual, final Box<T> expected) {\n" +
+            "    }\n" +
+            "    static void literal(final boolean flag) {\n" +
+            "        match(Boolean.valueOf(flag), boxed(true));\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
 }@SuppressWarnings("unused") // decompiler fixture
 class StreamPipelines {
     List<Method> methods(final Class<?> c) {
@@ -242,5 +262,22 @@ class AdaptedReferences {
 
     long castWhichCannotCompile() {
         return Stream.of("abc").map(String::toCharArray).mapToLong(a -> a.length).sum();
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class ForeignTypeVariables {
+    static class Box<T> {
+    }
+
+    static <T> Box<T> boxed(final T value) {
+        return null;
+    }
+
+    static <T> void match(final T actual, final Box<T> expected) {
+    }
+
+    static void literal(final boolean flag) {
+        match(flag, boxed(true));
     }
 }
