@@ -22,6 +22,7 @@ import com.strobel.assembler.ir.attributes.LocalVariableTableAttribute;
 import com.strobel.assembler.ir.attributes.LocalVariableTableEntry;
 import com.strobel.assembler.ir.attributes.SourceAttribute;
 import com.strobel.assembler.metadata.FieldDefinition;
+import com.strobel.assembler.metadata.FieldReference;
 import com.strobel.assembler.metadata.MemberReference;
 import com.strobel.assembler.metadata.MethodDefinition;
 import com.strobel.decompiler.languages.java.LineNumberTableConverter;
@@ -49,9 +50,12 @@ import com.strobel.decompiler.languages.java.ast.VariableDeclarationStatement;
 import com.strobel.decompiler.languages.java.ast.VariableInitializer;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -256,12 +260,65 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
     public void run(AstNode compilationUnit) {
         compilationUnit.acceptVisitor(new ConstructorGatherer(), null);
         compilationUnit.acceptVisitor(this, null);
-        for (FieldInit fieldInit : fieldInitLocations.values()) {
+        for (FieldInit fieldInit : movableFieldInits()) {
+            fieldInit.removeFieldInitStatements();
+            fieldInit.createVariableInitializer();
+        }
+    }
+
+    /**
+     * Returns the initializations which can become field initializers.  Those run first, so that they
+     * cannot read a field which is only assigned by a statement staying where it is.
+     */
+    private Collection<FieldInit> movableFieldInits() {
+        final Map<FieldDeclaration, FieldInit> movable = new LinkedHashMap<>();
+
+        for (final FieldInit fieldInit : fieldInitLocations.values()) {
             if (fieldInit.isInAllConstructors() || fieldInit.isInTypeInitializer()) {
-                fieldInit.removeFieldInitStatements();
-                fieldInit.createVariableInitializer();
+                movable.put(fieldInit.declaration, fieldInit);
             }
         }
+
+        // Keeping one initialization in place may in turn keep those which read its field.
+        while (movable.values().removeIf(fieldInit -> readsUnassignedField(fieldInit, movable.keySet()))) {
+            continue;
+        }
+
+        return movable.values();
+    }
+
+    private boolean readsUnassignedField(final FieldInit fieldInit, final Set<FieldDeclaration> moved) {
+        final FieldDefinition field = fieldInit.declaration.getUserData(Keys.FIELD_DEFINITION);
+        final List<FieldDeclaration> read = new ArrayList<>();
+
+        fieldInit.fieldInitStatements.get(0).initializer.acceptVisitor(new DepthFirstAstVisitor<Void, Void>() {
+            @Override
+            public Void visitMemberReferenceExpression(final MemberReferenceExpression node, final Void data) {
+                final MemberReference reference = node.getUserData(Keys.MEMBER_REFERENCE);
+
+                if (reference instanceof FieldReference &&
+                    reference.getDeclaringType().getInternalName().equals(field.getDeclaringType().getInternalName())) {
+
+                    final FieldDeclaration declaration = fieldDeclarations.get(reference.getFullName());
+
+                    if (declaration != null) {
+                        read.add(declaration);
+                    }
+                }
+
+                return super.visitMemberReferenceExpression(node, data);
+            }
+        }, null);
+
+        for (final FieldDeclaration declaration : read) {
+            if (!moved.contains(declaration) &&
+                declaration.getVariables().firstOrNullObject().getInitializer().isNull()) {
+
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private class FieldInit {

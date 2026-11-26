@@ -30,6 +30,39 @@ public class InitializerTests extends DecompilerTest {
         );
     }
 
+    @Test
+    public void testInitializersReadingFieldsAssignedByTheConstructorStayThere() {
+        verifyOutput(
+            ReadsConstructorField.class,
+            defaultSettings(),
+            "static class ReadsConstructorField {\n" +
+            "    private final char[] delimiter;\n" +
+            "    ReadsConstructorField(final String text) {\n" +
+            "        this.delimiter = text.toCharArray();\n" +
+            "        this.buffer = new char[this.delimiter.length];\n" +
+            "        this.size = this.buffer.length;\n" +
+            "    }\n" +
+            "    private final Object lock = new Object();\n" +
+            "    private final char[] buffer;\n" +
+            "    private final int size;\n" +
+            "}\n"
+        );
+    }
+
+    static class ReadsConstructorField {
+        private final char[] delimiter;
+        private final char[] buffer;
+        private final int size;
+        private final Object lock;
+
+        ReadsConstructorField(final String text) {
+            this.lock = new Object();
+            this.delimiter = text.toCharArray();
+            this.buffer = new char[this.delimiter.length];
+            this.size = this.buffer.length;
+        }
+    }
+
     @Rule
     public final TemporaryFolder folder = new TemporaryFolder();
 
