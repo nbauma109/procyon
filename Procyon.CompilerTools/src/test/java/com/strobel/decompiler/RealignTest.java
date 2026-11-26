@@ -379,4 +379,54 @@ public class RealignTest extends DecompilerTest {
             "}\n"
         );
     }
+
+    static class StaticLambdas {
+        static final java.util.List<Runnable> TASKS = new java.util.ArrayList<>();
+
+
+
+
+
+
+
+
+        private static final String[] NAMES = { "a" };
+        private static final String[] OTHERS = { "b" };
+
+        static {
+            register(NAMES, name -> {
+                System.out.println(name);
+            });
+            register(OTHERS, name -> System.out.println(name + 2));
+        }
+
+        static void register(final String[] names, final java.util.function.Consumer<String> consumer) {
+            TASKS.add(() -> consumer.accept(names[0]));
+        }
+    }
+
+    @Test
+    public void testStaticInitializerBlocksStayInOrderAroundLambdas() {
+        verifyOutput(
+            StaticLambdas.class,
+            defaultSettings(),
+            "static class StaticLambdas {\n" +
+            "    static final List<Runnable> TASKS;\n" +
+            "    private static final String[] NAMES;\n" +
+            "    private static final String[] OTHERS;\n" +
+            "    static {\n" +
+            "        TASKS = new ArrayList<Runnable>();\n" +
+            "    }\n" +
+            "    static {\n" +
+            "        NAMES = new String[] { \"a\" };\n" +
+            "        OTHERS = new String[] { \"b\" };\n" +
+            "        register(StaticLambdas.NAMES, name -> System.out.println(name));\n" +
+            "        register(StaticLambdas.OTHERS, name -> System.out.println(name + 2));\n" +
+            "    }\n" +
+            "    static void register(final String[] names, final Consumer<String> consumer) {\n" +
+            "        StaticLambdas.TASKS.add(() -> consumer.accept(names[0]));\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
 }
