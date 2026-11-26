@@ -1,0 +1,70 @@
+name: Decompiler round trip
+
+on:
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - "roundtrip/**"
+      - ".github/workflows/roundtrip.yml"
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      projects:
+        description: "Optional. Space-separated project names from roundtrip/projects.json (default: all)."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  round-trip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "8"
+          cache: gradle
+
+      - name: Test the pipeline
+        run: python3 -m unittest discover -s roundtrip -v
+
+      - name: Build the decompiler
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon :Procyon.Decompiler:jar
+
+      - name: Run the round trip
+        env:
+          # Pull requests only run one small project, as a smoke test of the pipeline.
+          PROJECTS: ${{ github.event_name == 'pull_request' && 'commons-codec' || github.event.inputs.projects }}
+        run: |
+          read -r -a projects <<< "${PROJECTS}"
+          python3 roundtrip/roundtrip.py "${projects[@]}"
+
+      - name: Summarize
+        if: always()
+        run: |
+          if [[ -f build/roundtrip/report.md ]]; then
+            head -c 1000000 build/roundtrip/report.md >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roundtrip-reports
+          path: |
+            build/roundtrip/report.md
+            build/roundtrip/*/report.json
+            build/roundtrip/*/logs/
+            build/roundtrip/*/decompiled/
+          if-no-files-found: ignore
