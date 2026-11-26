@@ -63,6 +63,73 @@ public class InitializerTests extends DecompilerTest {
         }
     }
 
+    @Test
+    public void testFieldsAssignedSeveralTimesAreNotMoved() {
+        verifyOutput(
+            AssignedTwice.class,
+            defaultSettings(),
+            "static class AssignedTwice {\n" +
+            "    AssignedTwice(final int value) {\n" +
+            "        this.twice = 1;\n" +
+            "        this.twice = 2;\n" +
+            "        this.parameterFirst = value;\n" +
+            "        this.parameterFirst = 3;\n" +
+            "        this.reader = this.twice;\n" +
+            "    }\n" +
+            "    private int twice;\n" +
+            "    private int parameterFirst;\n" +
+            "    private final int reader;\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testInitializersMayReadFieldsKeepingTheirDefaultValue() {
+        verifyOutput(
+            ReadsDefaultValue.class,
+            defaultSettings(),
+            "static class ReadsDefaultValue {\n" +
+            "    private int unset;\n" +
+            "    ReadsDefaultValue() {\n" +
+            "    }\n" +
+            "    private final int first = this.unset + 1;\n" +
+            "    private final int second = this.readFirst();\n" +
+            "    private int readFirst() {\n" +
+            "        return this.first;\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    static class AssignedTwice {
+        private int twice;
+        private int parameterFirst;
+        private final int reader;
+
+        AssignedTwice(final int value) {
+            this.twice = 1;
+            this.twice = 2;
+            this.parameterFirst = value;
+            this.parameterFirst = 3;
+            this.reader = this.twice;
+        }
+    }
+
+    static class ReadsDefaultValue {
+        private int unset;
+        private final int first;
+        private final int second;
+
+        ReadsDefaultValue() {
+            this.first = this.unset + 1;
+            this.second = this.readFirst();
+        }
+
+        private int readFirst() {
+            return this.first;
+        }
+    }
+
     @Rule
     public final TemporaryFolder folder = new TemporaryFolder();
 

@@ -52,7 +52,9 @@ import com.strobel.decompiler.languages.java.ast.VariableInitializer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -64,6 +66,8 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
 
     private ConcurrentHashMap<String, FieldDeclaration> fieldDeclarations = new ConcurrentHashMap<>();
     private ConcurrentHashMap<FieldLocation, FieldInit> fieldInitLocations = new ConcurrentHashMap<>();
+    /** Every assignment to a field found in a constructor or a type initializer, by field name. */
+    private final Map<String, Set<AssignmentExpression>> initializationAssignments = new HashMap<>();
     private ConcurrentHashMap<MethodDefinition, ConstructorDeclaration> constructionDefinitionToDeclaration = new ConcurrentHashMap<>();
     
     @Override
@@ -126,6 +130,7 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
 
     @Override
     public Void visitAssignmentExpression(AssignmentExpression node, Void data) {
+        recordInitializationAssignment(node);
         AstNode parent = node.getParent();
         if (parent instanceof ExpressionStatement 
                 && parent.getParent() instanceof BlockStatement 
@@ -266,54 +271,71 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
         }
     }
 
+    private void recordInitializationAssignment(final AssignmentExpression assignment) {
+        final MemberReference reference = assignment.getLeft().getUserData(Keys.MEMBER_REFERENCE);
+
+        if (!(reference instanceof FieldReference)) {
+            return;
+        }
+
+        for (AstNode node = assignment.getParent(); node != null; node = node.getParent()) {
+            final MethodDefinition method = node.getUserData(Keys.METHOD_DEFINITION);
+
+            if (method != null) {
+                if (method.isConstructor() || method.isTypeInitializer()) {
+                    initializationAssignments.computeIfAbsent(
+                        reference.getFullName(),
+                        name -> Collections.newSetFromMap(new IdentityHashMap<>())
+                    ).add(assignment);
+                }
+                return;
+            }
+        }
+    }
+
     /**
-     * Returns the initializations which can become field initializers.  Those run first, so that they
-     * cannot read a field which is only assigned by a statement staying where it is.
+     * Returns the initializations which can become field initializers.  A field qualifies only if the
+     * statements to move are all of its assignments: the others would otherwise run in a different
+     * order.  As field initializers run first, they must not read a field which is still assigned
+     * later either.
      */
     private Collection<FieldInit> movableFieldInits() {
-        final Map<FieldDeclaration, FieldInit> movable = new LinkedHashMap<>();
+        final Map<String, FieldInit> movable = new LinkedHashMap<>();
 
         for (final FieldInit fieldInit : fieldInitLocations.values()) {
-            if (fieldInit.isInAllConstructors() || fieldInit.isInTypeInitializer()) {
-                movable.put(fieldInit.declaration, fieldInit);
+            if ((fieldInit.isInAllConstructors() || fieldInit.isInTypeInitializer()) &&
+                initializationAssignments.get(fieldInit.fieldName()).size() == fieldInit.countStatements()) {
+
+                movable.put(fieldInit.fieldName(), fieldInit);
             }
         }
 
         // Keeping one initialization in place may in turn keep those which read its field.
-        while (movable.values().removeIf(fieldInit -> readsUnassignedField(fieldInit, movable.keySet()))) {
+        while (movable.values().removeIf(fieldInit -> readsDeferredField(fieldInit, movable.keySet()))) {
             continue;
         }
 
         return movable.values();
     }
 
-    private boolean readsUnassignedField(final FieldInit fieldInit, final Set<FieldDeclaration> moved) {
-        final FieldDefinition field = fieldInit.declaration.getUserData(Keys.FIELD_DEFINITION);
-        final List<FieldDeclaration> read = new ArrayList<>();
+    private boolean readsDeferredField(final FieldInit fieldInit, final Set<String> moved) {
+        final Set<String> read = new HashSet<>();
 
         fieldInit.fieldInitStatements.get(0).initializer.acceptVisitor(new DepthFirstAstVisitor<Void, Void>() {
             @Override
             public Void visitMemberReferenceExpression(final MemberReferenceExpression node, final Void data) {
                 final MemberReference reference = node.getUserData(Keys.MEMBER_REFERENCE);
 
-                if (reference instanceof FieldReference &&
-                    reference.getDeclaringType().getInternalName().equals(field.getDeclaringType().getInternalName())) {
-
-                    final FieldDeclaration declaration = fieldDeclarations.get(reference.getFullName());
-
-                    if (declaration != null) {
-                        read.add(declaration);
-                    }
+                if (reference instanceof FieldReference) {
+                    read.add(reference.getFullName());
                 }
 
                 return super.visitMemberReferenceExpression(node, data);
             }
         }, null);
 
-        for (final FieldDeclaration declaration : read) {
-            if (!moved.contains(declaration) &&
-                declaration.getVariables().firstOrNullObject().getInitializer().isNull()) {
-
+        for (final String name : read) {
+            if (initializationAssignments.containsKey(name) && !moved.contains(name)) {
                 return true;
             }
         }
@@ -364,6 +386,15 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
                 }
             }
             return constructorCount;
+        }
+
+        /** A constructor reached through {@code this(...)} calls is visited more than once. */
+        private long countStatements() {
+            return fieldInitStatements.stream().map(init -> init.statement).distinct().count();
+        }
+
+        private String fieldName() {
+            return declaration.getUserData(Keys.FIELD_DEFINITION).getFullName();
         }
 
         public boolean isInTypeInitializer() {
