@@ -45,6 +45,7 @@ import com.strobel.decompiler.languages.java.ast.MemberReferenceExpression;
 import com.strobel.decompiler.languages.java.ast.MethodDeclaration;
 import com.strobel.decompiler.languages.java.ast.Roles;
 import com.strobel.decompiler.languages.java.ast.ThisReferenceExpression;
+import com.strobel.decompiler.languages.java.ast.VariableDeclarationStatement;
 import com.strobel.decompiler.languages.java.ast.VariableInitializer;
 
 import java.util.ArrayList;
@@ -80,7 +81,7 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
                         if (!methodDeclaration.isFirstLineNumberKnown()) {
                             methodDeclaration.setFirstKnownLineNumber(currentLineNumber);
                         }
-                        if (previousLineNumber > 0 && currentLineNumber > previousLineNumber + 3) {
+                        if (previousLineNumber > 0 && currentLineNumber > previousLineNumber + 3 && !separatesVariableFromUse(node, child)) {
                             newMethodDeclaration = (MethodDeclaration) methodDeclaration.clone();
                             newMethodDeclaration.setFirstKnownLineNumber(currentLineNumber);
                             methodDeclaration.getParent().insertChildAfter(methodDeclaration, newMethodDeclaration, Roles.TYPE_MEMBER);
@@ -158,21 +159,51 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
     }
 
     /**
+     * Tells whether splitting a block before the given statement would leave a local variable declared
+     * in the first part and used in the second one.
+     */
+    private static boolean separatesVariableFromUse(final BlockStatement block, final AstNode pivot) {
+        final Set<String> declared = new HashSet<>();
+        final Set<String> used = new HashSet<>();
+        boolean afterPivot = false;
+
+        for (final AstNode child : block.getChildren()) {
+            afterPivot |= child == pivot;
+
+            if (afterPivot) {
+                used.addAll(usedIdentifiers(child));
+            }
+            else if (child instanceof VariableDeclarationStatement) {
+                for (final VariableInitializer variable : ((VariableDeclarationStatement) child).getVariables()) {
+                    declared.add(variable.getName());
+                }
+            }
+        }
+
+        return !Collections.disjoint(used, declared);
+    }
+
+    private static Set<String> usedIdentifiers(final AstNode node) {
+        final Set<String> used = new HashSet<>();
+
+        node.acceptVisitor(new DepthFirstAstVisitor<Void, Void>() {
+            @Override
+            public Void visitIdentifierExpression(final IdentifierExpression identifier, final Void data) {
+                used.add(identifier.getIdentifier());
+                return super.visitIdentifierExpression(identifier, data);
+            }
+        }, null);
+
+        return used;
+    }
+
+    /**
      * Tells whether an expression uses a parameter or a local variable of the method which contains it,
      * and therefore cannot leave it.  The local variable table cannot tell when it is missing, as the
      * names of the variables are then made up by the decompiler.
      */
     private static boolean usesVariablesOf(final EntityDeclaration method, final Expression expression) {
-        final Set<String> used = new HashSet<>();
         final Set<String> declared = new HashSet<>();
-
-        expression.acceptVisitor(new DepthFirstAstVisitor<Void, Void>() {
-            @Override
-            public Void visitIdentifierExpression(final IdentifierExpression node, final Void data) {
-                used.add(node.getIdentifier());
-                return super.visitIdentifierExpression(node, data);
-            }
-        }, null);
 
         method.acceptVisitor(new DepthFirstAstVisitor<Void, Void>() {
             @Override
@@ -194,7 +225,7 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
             }
         }, null);
 
-        return !Collections.disjoint(used, declared);
+        return !Collections.disjoint(usedIdentifiers(expression), declared);
     }
 
     @Override

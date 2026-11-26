@@ -350,4 +350,33 @@ public class RealignTest extends DecompilerTest {
         lineNumberSettings.setShowDebugLineNumbers(true);
         return lineNumberSettings;
     }
+
+    static class RewriteInitWithVariable {
+        static final Object VALUE;
+
+        static {
+            final Object value = "value";
+            System.out.println(value);
+
+
+
+            VALUE = value;
+        }
+    }
+
+    @Test
+    public void testStaticInitializerIsNotSplitBetweenVariableAndUse() {
+        verifyOutput(
+            RewriteInitWithVariable.class,
+            defaultSettings(),
+            "static class RewriteInitWithVariable {\n" +
+            "    static final Object VALUE;\n" +
+            "    static {\n" +
+            "        final Object value = \"value\";\n" +
+            "        System.out.println(value);\n" +
+            "        VALUE = value;\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
 }
