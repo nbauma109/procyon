@@ -238,4 +238,66 @@ public class EnumTests extends DecompilerTest {
             "}\n"
         );
     }
+
+    @Test
+    public void testStaticMembersAccessedFromConstantBodies() {
+        verifyOutput(
+            EnumBodyStatics.class,
+            defaultSettings(),
+            "class EnumBodyStatics\n" +
+            "{\n" +
+            "    enum State\n" +
+            "    {\n" +
+            "        FIRST {\n" +
+            "            @Override\n" +
+            "            State next() {\n" +
+            "                return State.SECOND;\n" +
+            "            }\n" +
+            "        },\n" +
+            "        SECOND {\n" +
+            "            @Override\n" +
+            "            State next() {\n" +
+            "                ++State.count;\n" +
+            "                State.reset();\n" +
+            "                ++State.count;\n" +
+            "                return State.FIRST;\n" +
+            "            }\n" +
+            "        };\n" +
+            "        static int count;\n" +
+            "        static void reset() {\n" +
+            "        }\n" +
+            "        abstract State next();\n" +
+            "    }\n" +
+            "}\n" +
+            ""
+        );
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class EnumBodyStatics {
+    enum State {
+        FIRST {
+            @Override
+            State next() {
+                return SECOND;
+            }
+        },
+        SECOND {
+            @Override
+            State next() {
+                count++;
+                reset();
+                count = count + 1;
+                return FIRST;
+            }
+        };
+
+        static int count;
+
+        static void reset() {
+        }
+
+        abstract State next();
+    }
 }

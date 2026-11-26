@@ -640,11 +640,12 @@ public class AstMethodBodyBuilder {
                 return new GotoStatement(byteCode.getOffset(), ((Label) operand).getName());
 
             case GetStatic: {
+                final FieldReference field = sourceReference(fieldOperand, fieldOperand.resolve());
                 final ConvertTypeOptions options = new ConvertTypeOptions();
                 options.setIncludeTypeParameterDefinitions(false);
-                final MemberReferenceExpression fieldReference = _astBuilder.convertType(fieldOperand.getDeclaringType(), options)
-                                                                            .member(fieldOperand.getName());
-                fieldReference.putUserData(Keys.MEMBER_REFERENCE, fieldOperand);
+                final MemberReferenceExpression fieldReference = _astBuilder.convertType(field.getDeclaringType(), options)
+                                                                            .member(field.getName());
+                fieldReference.putUserData(Keys.MEMBER_REFERENCE, field);
                 return fieldReference;
             }
 
@@ -653,6 +654,7 @@ public class AstMethodBodyBuilder {
                 options.setIncludeTypeParameterDefinitions(false);
 
                 final FieldDefinition resolvedField = fieldOperand.resolve();
+                final FieldReference field = sourceReference(fieldOperand, resolvedField);
                 final Expression fieldReference;
 
                 if (resolvedField != null &&
@@ -666,11 +668,11 @@ public class AstMethodBodyBuilder {
                     fieldReference = new IdentifierExpression( byteCode.getOffset(), fieldOperand.getName());
                 }
                 else {
-                    fieldReference = _astBuilder.convertType(fieldOperand.getDeclaringType(), options)
-                                                .member(fieldOperand.getName());
+                    fieldReference = _astBuilder.convertType(field.getDeclaringType(), options)
+                                                .member(field.getName());
                 }
 
-                fieldReference.putUserData(Keys.MEMBER_REFERENCE, fieldOperand);
+                fieldReference.putUserData(Keys.MEMBER_REFERENCE, field);
                 return new AssignmentExpression(fieldReference, arg1);
             }
 
@@ -1065,12 +1067,34 @@ public class AstMethodBodyBuilder {
         return inlinedAssembly;
     }
 
+    /**
+     * Returns the reference to use in the source code for a static member.  The compiler names the class
+     * from which the member is accessed, which has no name of its own if it is anonymous: the type
+     * declaring the inherited member must be used instead, as in the body of an enum constant accessing
+     * another constant.
+     */
+    private static <T extends MemberReference> T sourceReference(final T member, final IMemberDefinition definition) {
+        final TypeDefinition qualifier = member.getDeclaringType().resolve();
+
+        if (qualifier != null && qualifier.isAnonymous() && definition != null) {
+            @SuppressWarnings("unchecked")
+            final T declared = (T) definition;
+            return declared;
+        }
+
+        return member;
+    }
+
     private Expression transformCall(
         final boolean isVirtual,
         final com.strobel.decompiler.ast.Expression byteCode,
         final List<Expression> arguments) {
 
-        final MethodReference methodReference = (MethodReference) byteCode.getOperand();
+        MethodReference methodReference = (MethodReference) byteCode.getOperand();
+
+        if (byteCode.getCode() == AstCode.InvokeStatic) {
+            methodReference = sourceReference(methodReference, methodReference.resolve());
+        }
 
         final boolean hasThis = byteCode.getCode() == AstCode.InvokeVirtual ||
                                 byteCode.getCode() == AstCode.InvokeInterface ||
