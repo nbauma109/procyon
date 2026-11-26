@@ -94,4 +94,126 @@ public class InvertIfTests extends DecompilerTest {
         lineNumberSettings.setShowDebugLineNumbers(true);
         return lineNumberSettings;
     }
+
+    @Test
+    public void testInvertsOnlyWhenTheBranchEndsWithAJump() {
+        verifyOutput(
+            LoopUpdates.class,
+            defaultSettings(),
+            "class LoopUpdates\n" +
+            "{\n" +
+            "    char[] fallsThrough(final CharSequence text, final int[] indexes, final int length) {\n" +
+            "        final char[] result = new char[length];\n" +
+            "        int i = 0;\n" +
+            "        int n = 0;\n" +
+            "        while (i < text.length()) {\n" +
+            "            if (indexes[i] != -1) {\n" +
+            "                result[n] = text.charAt(i);\n" +
+            "                ++n;\n" +
+            "            }\n" +
+            "            ++i;\n" +
+            "        }\n" +
+            "        return result;\n" +
+            "    }\n" +
+            "    int returns(final int[] values) {\n" +
+            "        int i = 0;\n" +
+            "        int n = 0;\n" +
+            "        while (i < values.length) {\n" +
+            "            if (values[i] >= 0) {\n" +
+            "                ++i;\n" +
+            "            }\n" +
+            "            else {\n" +
+            "                return ++n;\n" +
+            "            }\n" +
+            "        }\n" +
+            "        return i;\n" +
+            "    }\n" +
+            "    int throwsOrBreaks(final int[] values, final boolean strict) {\n" +
+            "        int i = 0;\n" +
+            "        int n = 0;\n" +
+            "        while (i < values.length) {\n" +
+            "            if (values[i] < 0) {\n" +
+            "                ++n;\n" +
+            "                if (strict) {\n" +
+            "                    throw new IllegalArgumentException(String.valueOf(n));\n" +
+            "                }\n" +
+            "                break;\n" +
+            "            } else {\n" +
+            "                ++i;\n" +
+            "            }\n" +
+            "        }\n" +
+            "        return i;\n" +
+            "    }\n" +
+            "    int endsWithBranchesWhichJump(final int[] values, final boolean strict) {\n" +
+            "        int i = 0;\n" +
+            "        while (i < values.length) {\n" +
+            "            if (values[i] < 0) {\n" +
+            "                if (strict) {\n" +
+            "                    throw new IllegalArgumentException();\n" +
+            "                }\n" +
+            "                return -1;\n" +
+            "            } else {\n" +
+            "                ++i;\n" +
+            "            }\n" +
+            "        }\n" +
+            "        return i;\n" +
+            "    }\n" +
+            "}\n" +
+            ""
+        );
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class LoopUpdates {
+    char[] fallsThrough(final CharSequence text, final int[] indexes, final int length) {
+        final char[] result = new char[length];
+        for (int i = 0, n = 0; i < text.length(); i++) {
+            if (indexes[i] != -1) {
+                result[n] = text.charAt(i);
+                n++;
+            }
+        }
+        return result;
+    }
+
+    int returns(final int[] values) {
+        int i = 0;
+        for (int n = 0; i < values.length; i++) {
+            if (values[i] < 0) {
+                n++;
+                return n;
+            }
+        }
+        return i;
+    }
+
+    int throwsOrBreaks(final int[] values, final boolean strict) {
+        int i = 0;
+        for (int n = 0; i < values.length; i++) {
+            if (values[i] < 0) {
+                n++;
+                if (strict) {
+                    throw new IllegalArgumentException(String.valueOf(n));
+                } else {
+                    break;
+                }
+            }
+        }
+        return i;
+    }
+
+    int endsWithBranchesWhichJump(final int[] values, final boolean strict) {
+        int i = 0;
+        for (; i < values.length; i++) {
+            if (values[i] < 0) {
+                if (strict) {
+                    throw new IllegalArgumentException();
+                } else {
+                    return -1;
+                }
+            }
+        }
+        return i;
+    }
 }
