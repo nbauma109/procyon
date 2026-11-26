@@ -97,6 +97,12 @@ class TestReportTests(unittest.TestCase):
         self.assertEqual("a.T,a.U", roundtrip.test_filter(["a.U#x", "a.T$Nested#y", "a.T#z", "#init"]))
 
 
+class TimeoutTests(unittest.TestCase):
+    def test_allows_a_few_times_the_baseline_duration_within_the_limit(self):
+        self.assertEqual(210, roundtrip.adapted_timeout(30, 1200))
+        self.assertEqual(1200, roundtrip.adapted_timeout(900, 1200))
+
+
 class BisectionTests(unittest.TestCase):
     def test_finds_every_independent_culprit(self):
         bad = {"c", "f"}

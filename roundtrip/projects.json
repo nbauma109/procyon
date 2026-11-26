@@ -37,7 +37,7 @@
   },
   "gson": {
     "repo": "https://github.com/google/gson",
-    "ref": "gson-parent-2.10.1",
+    "ref": "gson-parent-2.8.9",
     "module": "gson"
   },
   "junit4": {
