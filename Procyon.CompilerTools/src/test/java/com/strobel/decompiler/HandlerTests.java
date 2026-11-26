@@ -922,4 +922,39 @@ public class HandlerTests extends DecompilerTest {
             "    }\n" +
             "}");
     }
+
+    @Test
+    public void testNestedObjectCreationRethrownInsideLambda() {
+        verifyOutput(
+            LambdaRethrow.class,
+            defaultSettings(),
+            "class LambdaRethrow {\n" +
+            "    static void test(final List<String> list) {\n" +
+            "        list.forEach(s -> {\n" +
+            "            try {\n" +
+            "                s.length();\n" +
+            "            }\n" +
+            "            catch (final IllegalStateException e) {\n" +
+            "                throw new IllegalStateException(\"Problem processing \" + s, e);\n" +
+            "            }\n" +
+            "        });\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
 }
+
+@SuppressWarnings("unused") // decompiler fixture
+class LambdaRethrow {
+    static void test(final java.util.List<String> list) {
+        list.forEach(s -> {
+            try {
+                s.length();
+            }
+            catch (final IllegalStateException e) {
+                throw new IllegalStateException("Problem processing " + s, e);
+            }
+        });
+    }
+}
+
