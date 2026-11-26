@@ -686,7 +686,7 @@ public class AstMethodBodyBuilder {
                     fieldReference = new SuperReferenceExpression(arg1.getOffset()).member(fieldOperand.getName());
                 }
                 else {
-                    fieldReference = arg1.member(fieldOperand.getName());
+                    fieldReference = discardResultCast(arg1).member(fieldOperand.getName());
                 }
 
                 fieldReference.putUserData(Keys.MEMBER_REFERENCE, fieldOperand);
@@ -703,7 +703,7 @@ public class AstMethodBodyBuilder {
                     fieldReference = new SuperReferenceExpression(arg1.getOffset()).member(fieldOperand.getName());
                 }
                 else {
-                    fieldReference = arg1.member(fieldOperand.getName());
+                    fieldReference = discardResultCast(arg1).member(fieldOperand.getName());
                 }
 
                 fieldReference.putUserData(Keys.MEMBER_REFERENCE, fieldOperand);
@@ -1105,7 +1105,7 @@ public class AstMethodBodyBuilder {
         final TypeReference declaringType = methodReference.getDeclaringType();
 
         if (hasThis) {
-            target = arguments.remove(0);
+            target = discardResultCast(arguments.remove(0));
 
             if (target instanceof NullReferenceExpression) {
                 target = new CastExpression(_astBuilder.convertType(declaringType), target);
@@ -1245,7 +1245,10 @@ public class AstMethodBodyBuilder {
         return invocation;
     }
 
-    /** A cast cannot stand as a statement, and an unused result needs none. */
+    /**
+     * Removes the cast to a raw type where the result is discarded, as a cast cannot stand as a statement,
+     * or where its members are accessed, as their types would be erased too.
+     */
     private static Expression discardResultCast(final Expression expression) {
         if (expression.getUserData(Keys.RESULT_CAST) == null) {
             return expression;
@@ -1582,6 +1585,7 @@ public class AstMethodBodyBuilder {
 
             if (!candidate.getErasedSignature().equals(signature) &&
                 !other.isGenericParameter() &&
+                isAccessible(candidate) &&
                 MetadataHelper.isAssignableFrom(MetadataHelper.erase(other), argumentType)) {
 
                 return eraseBound(MetadataHelper.getUpperBound(declared));
@@ -1589,6 +1593,46 @@ public class AstMethodBodyBuilder {
         }
 
         return null;
+    }
+
+    /** Tells whether the compiler may select a method from the type being decompiled. */
+    private boolean isAccessible(final MethodReference method) {
+        final MethodDefinition definition = method.resolve();
+
+        if (definition == null || definition.isPublic()) {
+            return true;
+        }
+
+        final TypeReference declaringType = definition.getDeclaringType();
+        final TypeReference currentType = _context.getCurrentType();
+
+        if (definition.isPrivate()) {
+            return outermostType(declaringType).isEquivalentTo(outermostType(currentType));
+        }
+
+        if (outermostType(declaringType).getPackageName().equals(outermostType(currentType).getPackageName())) {
+            return true;
+        }
+
+        if (definition.isProtected()) {
+            for (TypeReference type = currentType; type != null; type = type.getDeclaringType()) {
+                if (MetadataHelper.isSubType(type, declaringType)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static TypeReference outermostType(final TypeReference type) {
+        TypeReference outermost = type;
+
+        while (outermost.getDeclaringType() != null) {
+            outermost = outermost.getDeclaringType();
+        }
+
+        return outermost;
     }
 
     /**

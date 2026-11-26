@@ -1,5 +1,7 @@
 package com.strobel.decompiler;
 
+import com.strobel.decompiler.fixtures.OverloadsElsewhere;
+import java.io.IOException;
 import java.util.stream.Stream;
 import java.util.function.Supplier;
 import java.util.function.Function;
@@ -202,6 +204,9 @@ public class GenericsTests extends DecompilerTest {
             "class BoundOverloads {\n" +
             "    abstract static class Both implements CharSequence, Runnable {\n" +
             "    }\n" +
+            "    static class Holder<T> {\n" +
+            "        T value;\n" +
+            "    }\n" +
             "    <B extends Appendable> B append(final B buffer) {\n" +
             "        return buffer;\n" +
             "    }\n" +
@@ -233,6 +238,66 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    Both intersect(final Both value) {\n" +
             "        return (Both)this.intersect((CharSequence & Runnable)value);\n" +
+            "    }\n" +
+            "    int length(final String value) {\n" +
+            "        return this.wrap((CharSequence)value).get(0).length();\n" +
+            "    }\n" +
+            "    <T extends CharSequence> Holder<T> hold(final T value) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    Holder<String> hold(final String value) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    int heldLength(final String value) {\n" +
+            "        return this.hold((CharSequence)value).value.length();\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testInaccessibleOverloadsDoNotRequireACast() {
+        verifyOutput(
+            Tosser.class,
+            defaultSettings(),
+            "class Tosser {\n" +
+            "    void run(final IOException e) throws IOException {\n" +
+            "        Thrower.toss(e);\n" +
+            "    }\n" +
+            "    void packageOverload(final Integer n) {\n" +
+            "        Thrower.count((Number)n);\n" +
+            "    }\n" +
+            "    void protectedOverload(final String s) {\n" +
+            "        Thrower.read((CharSequence)s);\n" +
+            "    }\n" +
+            "    static class Nested {\n" +
+            "        void packageOverload(final Integer n) {\n" +
+            "            Thrower.count((Number)n);\n" +
+            "        }\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testOverloadsOfAnotherPackage() {
+        verifyOutput(
+            Outsider.class,
+            defaultSettings(),
+            "class Outsider {\n" +
+            "    void run(final Integer n, final String s) {\n" +
+            "        OverloadsElsewhere.count(n);\n" +
+            "        OverloadsElsewhere.read(s);\n" +
+            "    }\n" +
+            "}\n"
+        );
+        verifyOutput(
+            Heir.class,
+            defaultSettings(),
+            "class Heir extends OverloadsElsewhere {\n" +
+            "    void run(final Integer n, final String s) {\n" +
+            "        OverloadsElsewhere.count(n);\n" +
+            "        OverloadsElsewhere.read((CharSequence)s);\n" +
             "    }\n" +
             "}\n"
         );
@@ -246,6 +311,9 @@ public class GenericsTests extends DecompilerTest {
             "class BoundOverloads {\n" +
             "    abstract static class Both implements CharSequence, Runnable {\n" +
             "    }\n" +
+            "    static class Holder<T> {\n" +
+            "        T value;\n" +
+            "    }\n" +
             "    <B extends Appendable> B append(final B buffer) {\n" +
             "        return buffer;\n" +
             "    }\n" +
@@ -277,6 +345,18 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    Both intersect(final Both value) {\n" +
             "        return (Both)this.intersect((CharSequence & Runnable)value);\n" +
+            "    }\n" +
+            "    int length(final String value) {\n" +
+            "        return this.wrap((CharSequence)value).get(0).length();\n" +
+            "    }\n" +
+            "    <T extends CharSequence> Holder<T> hold(final T value) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    Holder<String> hold(final String value) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    int heldLength(final String value) {\n" +
+            "        return this.hold((CharSequence)value).value.length();\n" +
             "    }\n" +
             "}\n"
         );
@@ -417,6 +497,85 @@ class BoundOverloads {
         return (Both) intersect((CharSequence & Runnable) value);
     }
 
+    int length(final String value) {
+        return wrap((CharSequence) value).get(0).length();
+    }
+
+    <T extends CharSequence> Holder<T> hold(final T value) {
+        return null;
+    }
+
+    Holder<String> hold(final String value) {
+        return null;
+    }
+
+    int heldLength(final String value) {
+        return hold((CharSequence) value).value.length();
+    }
+
     abstract static class Both implements CharSequence, Runnable {
+    }
+
+    static class Holder<T> {
+        T value;
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class Thrower {
+    static <E extends Exception> void toss(final E e) throws E {
+        throw e;
+    }
+
+    private static void toss(final IOException e) {
+    }
+
+    static <N extends Number> void count(final N n) {
+    }
+
+    static void count(final Integer n) {
+    }
+
+    protected static <C extends CharSequence> void read(final C c) {
+    }
+
+    protected static void read(final String s) {
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class Tosser {
+    void run(final IOException e) throws IOException {
+        Thrower.toss(e);
+    }
+
+    void packageOverload(final Integer n) {
+        Thrower.count((Number) n);
+    }
+
+    void protectedOverload(final String s) {
+        Thrower.read((CharSequence) s);
+    }
+
+    static class Nested {
+        void packageOverload(final Integer n) {
+            Thrower.count((Number) n);
+        }
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class Outsider {
+    void run(final Integer n, final String s) {
+        OverloadsElsewhere.count(n);
+        OverloadsElsewhere.read(s);
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class Heir extends OverloadsElsewhere {
+    void run(final Integer n, final String s) {
+        OverloadsElsewhere.count(n);
+        OverloadsElsewhere.read((CharSequence) s);
     }
 }
