@@ -197,6 +197,70 @@ public class InitializerTests extends DecompilerTest {
         }
     }
 
+    @Test
+    public void testAssignmentsDoNotOvertakeCallsWhichMayReadThem() {
+        verifyOutput(
+            ReadThroughCall.class,
+            defaultSettings(),
+            "static class ReadThroughCall {\n" +
+            "    ReadThroughCall() {\n" +
+            "        this.noop();\n" +
+            "        this.x = this.readY();\n" +
+            "        this.y = 3;\n" +
+            "    }\n" +
+            "    private final int x;\n" +
+            "    private int y;\n" +
+            "    private void noop() {\n" +
+            "    }\n" +
+            "    private int readY() {\n" +
+            "        return this.y;\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testAssignmentsDoNotOvertakeCallsReceivingTheInstance() {
+        verifyOutput(
+            EscapingInstance.class,
+            defaultSettings(),
+            "static class EscapingInstance {\n" +
+            "    EscapingInstance() {\n" +
+            "        System.out.println(this);\n" +
+            "        this.y = 3;\n" +
+            "    }\n" +
+            "    private int y;\n" +
+            "}\n"
+        );
+    }
+
+    static class ReadThroughCall {
+        private final int x;
+        private int y;
+
+        ReadThroughCall() {
+            this.noop();
+            this.x = this.readY();
+            this.y = 3;
+        }
+
+        private void noop() {
+        }
+
+        private int readY() {
+            return this.y;
+        }
+    }
+
+    static class EscapingInstance {
+        private int y;
+
+        EscapingInstance() {
+            System.out.println(this);
+            this.y = 3;
+        }
+    }
+
     @Rule
     public final TemporaryFolder folder = new TemporaryFolder();
 

@@ -333,8 +333,8 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
 
     /**
      * Tells whether moving an initialization would make it run before a statement staying in place
-     * which uses its field, or, if the initializer depends on the state of the class, before one which
-     * uses any member of the class.
+     * which uses its field or may read it through a call, or, if the initializer depends on the state
+     * of the class, before one which uses any member of the class.
      */
     private boolean overtakesDependentStatement(final FieldInit fieldInit, final Set<AstNode> movedStatements) {
         final FieldDefinition field = fieldInit.declaration.getUserData(Keys.FIELD_DEFINITION);
@@ -347,7 +347,8 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
             for (final AstNode statement : precedingStatements(init.statement)) {
                 if (!movedStatements.contains(statement) &&
                     (references(statement).stream().anyMatch(r -> r.getFullName().equals(field.getFullName())) ||
-                     dependsOnState && usesMemberOf(statement, owner))) {
+                     dependsOnState && usesMemberOf(statement, owner) ||
+                     mayReadThroughCall(statement, field.isStatic(), owner))) {
 
                     return true;
                 }
@@ -378,6 +379,29 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
         }
 
         return preceding;
+    }
+
+    /**
+     * Any code can read a static field.  An instance under construction is only known to the code of
+     * its class, and to the code it is passed to.
+     */
+    private static boolean mayReadThroughCall(final AstNode statement, final boolean isStatic, final String owner) {
+        return containsCall(statement) &&
+               (isStatic || usesMemberOf(statement, owner) || containsThis(statement));
+    }
+
+    private static boolean containsThis(final AstNode root) {
+        final boolean[] found = new boolean[1];
+
+        root.acceptVisitor(new DepthFirstAstVisitor<Void, Void>() {
+            @Override
+            public Void visitThisReferenceExpression(final ThisReferenceExpression node, final Void data) {
+                found[0] = true;
+                return null;
+            }
+        }, null);
+
+        return found[0];
     }
 
     private static boolean usesMemberOf(final AstNode node, final String owner) {
