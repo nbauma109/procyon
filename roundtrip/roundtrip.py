@@ -23,6 +23,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 import xml.etree.ElementTree as ElementTree
 import zipfile
 
@@ -219,6 +220,11 @@ def test_filter(tests):
     return ",".join(sorted(classes))
 
 
+def adapted_timeout(baseline_seconds, limit):
+    """Timeout of the test runs which follow a baseline of the given duration."""
+    return min(limit, int(3 * baseline_seconds) + 120)
+
+
 # --------------------------------------------------------------------------- bisection
 
 def find_culprits(candidates, fails, limit=20):
@@ -259,6 +265,7 @@ class Project:
         self.classes = os.path.join(self.module, "target", "classes")
         self.original = os.path.join(self.work, "original-classes")
         self.reports = os.path.join(self.module, "target", "surefire-reports")
+        self.timeout = options.test_timeout
 
     def log(self, name):
         return os.path.join(self.logs, name + ".log")
@@ -317,12 +324,15 @@ class Project:
         goals = ["test", "-Dmaven.main.skip=true", "-Dmaven.test.failure.ignore=true"]
         if only:
             goals += ["-Dtest=" + only, "-DfailIfZeroTests=false", "-Dsurefire.failIfNoSpecifiedTests=false"]
-        code, _ = self.maven(goals, log, timeout=self.options.test_timeout)
+        code, _ = self.maven(goals, log, timeout=self.timeout)
         return code == 0, parse_surefire_reports(self.reports)
 
     def baseline(self):
         self.step("running the baseline tests")
+        started = time.monotonic()
         completed, results = self.test("test-baseline")
+        # A decompiler bug can make tests loop forever: do not wait much longer than they normally take.
+        self.timeout = adapted_timeout(time.monotonic() - started, self.options.test_timeout)
         if not completed or not results:
             raise PipelineError("the baseline tests did not complete, see " + self.log("test-baseline"))
         return results
@@ -488,7 +498,7 @@ def parse_arguments(argv):
     parser.add_argument("--javac", default=java_tool("javac"))
     parser.add_argument("--maven", default="mvn")
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 2)
-    parser.add_argument("--test-timeout", type=int, default=1200, help="seconds")
+    parser.add_argument("--test-timeout", type=int, default=1200, help="upper bound in seconds; shortened after a quick baseline")
     parser.add_argument("--decompile-timeout", type=int, default=1200, help="seconds")
     parser.add_argument("--skip-tests", action="store_true", help="stop after recompilation")
     parser.add_argument("--no-bisect", dest="bisect", action="store_false")

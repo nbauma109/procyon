@@ -27,6 +27,9 @@ python3 roundtrip/roundtrip.py                      # all projects
 python3 roundtrip/roundtrip.py commons-codec jsoup  # some of them
 ```
 
+The test runs following the baseline time out after three times its duration plus two
+minutes (at most `--test-timeout`), as a decompiler bug can make a test loop forever.
+
 Useful options: `--skip-tests` (stop after recompilation), `--no-bisect`, `--jobs`,
 `--jar` (decompile with another Procyon build); see `--help`.
 
