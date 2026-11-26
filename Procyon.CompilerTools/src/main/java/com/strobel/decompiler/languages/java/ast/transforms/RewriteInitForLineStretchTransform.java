@@ -38,14 +38,18 @@ import com.strobel.decompiler.languages.java.ast.ExpressionStatement;
 import com.strobel.decompiler.languages.java.ast.FieldDeclaration;
 import com.strobel.decompiler.languages.java.ast.Identifier;
 import com.strobel.decompiler.languages.java.ast.InvocationExpression;
+import com.strobel.decompiler.languages.java.ast.IdentifierExpression;
+import com.strobel.decompiler.languages.java.ast.ParameterDeclaration;
 import com.strobel.decompiler.languages.java.ast.Keys;
 import com.strobel.decompiler.languages.java.ast.MemberReferenceExpression;
 import com.strobel.decompiler.languages.java.ast.MethodDeclaration;
 import com.strobel.decompiler.languages.java.ast.Roles;
 import com.strobel.decompiler.languages.java.ast.ThisReferenceExpression;
+import com.strobel.decompiler.languages.java.ast.VariableDeclarationStatement;
 import com.strobel.decompiler.languages.java.ast.VariableInitializer;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -77,7 +81,7 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
                         if (!methodDeclaration.isFirstLineNumberKnown()) {
                             methodDeclaration.setFirstKnownLineNumber(currentLineNumber);
                         }
-                        if (previousLineNumber > 0 && currentLineNumber > previousLineNumber + 3) {
+                        if (previousLineNumber > 0 && currentLineNumber > previousLineNumber + 3 && !separatesVariableFromUse(node, child)) {
                             newMethodDeclaration = (MethodDeclaration) methodDeclaration.clone();
                             newMethodDeclaration.setFirstKnownLineNumber(currentLineNumber);
                             methodDeclaration.getParent().insertChildAfter(methodDeclaration, newMethodDeclaration, Roles.TYPE_MEMBER);
@@ -140,7 +144,8 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
 	                    LocalVariableTableAttribute localVariableTable = SourceAttribute.find(AttributeNames.LocalVariableTable, methodDefinition.getSourceAttributes());
 	                    IdentifierGatherer identifierGatherer = new IdentifierGatherer();
 	                    initializer.acceptVisitor(identifierGatherer, null);
-	                    if (localVariableTable == null || identifierGatherer.containsNoneOf(localVariableTable.getEntries())) {
+	                    if ((localVariableTable == null || identifierGatherer.containsNoneOf(localVariableTable.getEntries()))
+	                            && !usesVariablesOf(entityDeclaration, initializer)) {
 	                        fieldDeclaration.setLineNumber(lineNumber);
 	                        FieldLocation fieldLocation = new FieldLocation(memberReference.getFullName(), offset);
 	                        fieldInitLocations.putIfAbsent(fieldLocation, new FieldInit(fieldDeclaration));
@@ -151,6 +156,76 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
             }
         }
         return super.visitAssignmentExpression(node, data);
+    }
+
+    /**
+     * Tells whether splitting a block before the given statement would leave a local variable declared
+     * in the first part and used in the second one.
+     */
+    private static boolean separatesVariableFromUse(final BlockStatement block, final AstNode pivot) {
+        final Set<String> declared = new HashSet<>();
+        final Set<String> used = new HashSet<>();
+        boolean afterPivot = false;
+
+        for (final AstNode child : block.getChildren()) {
+            afterPivot |= child == pivot;
+
+            if (afterPivot) {
+                used.addAll(usedIdentifiers(child));
+            }
+            else if (child instanceof VariableDeclarationStatement) {
+                for (final VariableInitializer variable : ((VariableDeclarationStatement) child).getVariables()) {
+                    declared.add(variable.getName());
+                }
+            }
+        }
+
+        return !Collections.disjoint(used, declared);
+    }
+
+    private static Set<String> usedIdentifiers(final AstNode node) {
+        final Set<String> used = new HashSet<>();
+
+        node.acceptVisitor(new DepthFirstAstVisitor<Void, Void>() {
+            @Override
+            public Void visitIdentifierExpression(final IdentifierExpression identifier, final Void data) {
+                used.add(identifier.getIdentifier());
+                return super.visitIdentifierExpression(identifier, data);
+            }
+        }, null);
+
+        return used;
+    }
+
+    /**
+     * Tells whether an expression uses a parameter or a local variable of the method which contains it,
+     * and therefore cannot leave it.  The local variable table cannot tell when it is missing, as the
+     * names of the variables are then made up by the decompiler.
+     */
+    private static boolean usesVariablesOf(final EntityDeclaration method, final Expression expression) {
+        final Set<String> declared = new HashSet<>();
+
+        method.acceptVisitor(new DepthFirstAstVisitor<Void, Void>() {
+            @Override
+            protected Void visitChildren(final AstNode node, final Void data) {
+                // Variables declared within the expression, such as lambda parameters, move with it.
+                return node == expression ? null : super.visitChildren(node, data);
+            }
+
+            @Override
+            public Void visitParameterDeclaration(final ParameterDeclaration node, final Void data) {
+                declared.add(node.getName());
+                return super.visitParameterDeclaration(node, data);
+            }
+
+            @Override
+            public Void visitVariableInitializer(final VariableInitializer node, final Void data) {
+                declared.add(node.getName());
+                return super.visitVariableInitializer(node, data);
+            }
+        }, null);
+
+        return !Collections.disjoint(usedIdentifiers(expression), declared);
     }
 
     @Override
