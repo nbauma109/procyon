@@ -1263,6 +1263,7 @@ public class AstMethodBodyBuilder {
                     start = Math.min(start, end);
 
                     return adjustArgumentsForMethodCallCore(
+                        method,
                         method.getParameters().subList(start, end),
                         arguments.subList(start, end)
                     );
@@ -1270,10 +1271,11 @@ public class AstMethodBodyBuilder {
             }
         }
 
-        return adjustArgumentsForMethodCallCore(method.getParameters(), arguments);
+        return adjustArgumentsForMethodCallCore(method, method.getParameters(), arguments);
     }
 
     private List<Expression> adjustArgumentsForMethodCallCore(
+        final MethodReference method,
         final List<ParameterDefinition> parameters,
         final List<Expression> arguments) {
 
@@ -1302,7 +1304,9 @@ public class AstMethodBodyBuilder {
             final TypeReference aType = resolvedArgument.getType();
             final TypeReference pType = p.getParameterType();
 
-            if (isCastRequired(pType, aType, true)) {
+            if (isCastRequired(pType, aType, true) &&
+                !isTypedByTarget(method, argument, pType, aType)) {
+
                 arguments.set(
                     i,
                     new CastExpression(_astBuilder.convertType(pType, options), argument)
@@ -1329,6 +1333,164 @@ public class AstMethodBodyBuilder {
         }
 
         return arguments.subList(first, last + 1);
+    }
+
+    /**
+     * Tells whether an argument takes its type from the parameter it is passed to, so that casting it
+     * is not wanted.  The type arguments of such a cast come from the bytecode and are only known up
+     * to erasure: {@code collect((Collector<? super Object, ?, List<String>>) Collectors.toList())}
+     * does not compile where {@code collect(Collectors.toList())} does.
+     * <p>
+     * The cast is kept when it can carry some meaning: when the invoked method is overloaded, when a
+     * method reference adapts the return type of its target, or when the compiler would accept it, as
+     * it may then be what selects the type arguments.
+     */
+    private static boolean isTypedByTarget(
+        final MethodReference method,
+        final Expression argument,
+        final TypeReference parameterType,
+        final TypeReference argumentType) {
+
+        if (!(parameterType instanceof IGenericInstance) ||
+            !MetadataHelper.isAssignableFrom(MetadataHelper.erase(parameterType), MetadataHelper.erase(argumentType)) ||
+            isOverloaded(method)) {
+
+            return false;
+        }
+
+        if (argument instanceof MethodGroupExpression) {
+            return !isOverloaded((MethodReference) argument.getUserData(Keys.MEMBER_REFERENCE)) &&
+                   !adaptsReturnType((MethodGroupExpression) argument);
+        }
+
+        if (argument instanceof InvocationExpression) {
+            final MemberReference invoked = argument.getUserData(Keys.MEMBER_REFERENCE);
+
+            if (invoked instanceof MethodReference) {
+                final MethodDefinition definition = ((MethodReference) invoked).resolve();
+
+                if (definition == null) {
+                    return false;
+                }
+
+                return !isLegalCast(
+                    parameterType,
+                    definition.isGenericMethod() ? instantiateWithBounds(definition) : argumentType
+                );
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Tells whether a method reference implements a function returning something else than what the
+     * referenced method returns, e.g. {@code (Function<String, Object>) String::length}.
+     */
+    private static boolean adaptsReturnType(final MethodGroupExpression methodGroup) {
+        final DynamicCallSite callSite = methodGroup.getUserData(Keys.DYNAMIC_CALL_SITE);
+        final MethodReference target = (MethodReference) methodGroup.getUserData(Keys.MEMBER_REFERENCE);
+
+        if (callSite == null || target == null ||
+            callSite.getBootstrapArguments().size() < 3 ||
+            !(callSite.getBootstrapArguments().get(2) instanceof IMethodSignature)) {
+
+            return true;
+        }
+
+        final TypeReference implemented = ((IMethodSignature) callSite.getBootstrapArguments().get(2)).getReturnType();
+
+        if (implemented.isPrimitive()) {
+            return false;
+        }
+
+        final TypeReference returned = target.isConstructor() ? target.getDeclaringType()
+                                                              : target.getReturnType();
+
+        return !MetadataHelper.isSameType(
+            MetadataHelper.erase(implemented),
+            MetadataHelper.erase(MetadataHelper.getBoxedTypeOrSelf(returned))
+        );
+    }
+
+    /**
+     * Returns the type of a generic method invocation which nothing but the bounds of the type
+     * variables constrains, as in the operand of a cast.
+     */
+    private static TypeReference instantiateWithBounds(final MethodDefinition method) {
+        final Map<TypeReference, TypeReference> mappings = new HashMap<>();
+
+        for (final GenericParameter parameter : method.getGenericParameters()) {
+            mappings.put(parameter, MetadataHelper.eraseRecursive(parameter));
+        }
+
+        return TypeSubstitutionVisitor.instance().visit(method.getReturnType(), mappings);
+    }
+
+    /**
+     * Tells whether the type arguments of a cast contain those of the type being cast.
+     */
+    private static boolean isLegalCast(final TypeReference targetType, final TypeReference sourceType) {
+        if (!(sourceType instanceof IGenericInstance) ||
+            !MetadataHelper.isSameType(MetadataHelper.erase(targetType), MetadataHelper.erase(sourceType))) {
+
+            return true;
+        }
+
+        final List<TypeReference> targets = ((IGenericInstance) targetType).getTypeArguments();
+        final List<TypeReference> sources = ((IGenericInstance) sourceType).getTypeArguments();
+
+        for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
+            final TypeReference target = targets.get(i);
+            final TypeReference source = sources.get(i);
+
+            if (source.isWildcardType() || source.isGenericParameter()) {
+                continue;
+            }
+
+            final boolean contained;
+
+            if (!target.isWildcardType()) {
+                contained = target.isGenericParameter() || MetadataHelper.isSameType(target, source);
+            }
+            else if (target.hasSuperBound()) {
+                contained = MetadataHelper.isAssignableFrom(source, target.getSuperBound());
+            }
+            else {
+                contained = !target.hasExtendsBound() ||
+                            MetadataHelper.isAssignableFrom(target.getExtendsBound(), source);
+            }
+
+            if (!contained) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static boolean isOverloaded(final MethodReference method) {
+        final TypeDefinition declaringType = method != null ? method.getDeclaringType().resolve() : null;
+
+        if (declaringType == null) {
+            return true;
+        }
+
+        final List<MethodReference> candidates = MetadataHelper.findMethods(
+            declaringType,
+            MetadataFilters.matchName(method.getName())
+        );
+
+        final int parameterCount = method.getParameters().size();
+        int matches = 0;
+
+        for (final MethodReference candidate : candidates) {
+            if (candidate.getParameters().size() == parameterCount) {
+                ++matches;
+            }
+        }
+
+        return matches > 1;
     }
 
     @SuppressWarnings("SameParameterValue")
