@@ -378,7 +378,7 @@ public class AstMethodBodyBuilder {
 
             if (codeExpression != null) {
                 if (codeExpression instanceof Expression) {
-                    return new ExpressionStatement((Expression) codeExpression);
+                    return new ExpressionStatement(discardResultCast((Expression) codeExpression));
                 }
                 return (Statement) codeExpression;
             }
@@ -1237,9 +1237,23 @@ public class AstMethodBodyBuilder {
         final TypeReference declared = method.resolve().getReturnType();
 
         if (declared instanceof IGenericInstance && declared.containsGenericParameters()) {
-            return new CastExpression(_astBuilder.convertType(MetadataHelper.erase(declared)), invocation);
+            final CastExpression cast = new CastExpression(_astBuilder.convertType(MetadataHelper.erase(declared)), invocation);
+            cast.putUserData(Keys.RESULT_CAST, true);
+            return cast;
         }
 
+        return invocation;
+    }
+
+    /** A cast cannot stand as a statement, and an unused result needs none. */
+    private static Expression discardResultCast(final Expression expression) {
+        if (expression.getUserData(Keys.RESULT_CAST) == null) {
+            return expression;
+        }
+
+        final Expression invocation = ((CastExpression) expression).getExpression();
+
+        invocation.remove();
         return invocation;
     }
 
@@ -1356,7 +1370,9 @@ public class AstMethodBodyBuilder {
             final TypeReference boundType = overloadSelectingBound(method, p.getPosition(), aType);
 
             if (boundType != null) {
-                final CastExpression cast = new CastExpression(_astBuilder.convertType(boundType, options), argument);
+                final ConvertTypeOptions boundOptions = new ConvertTypeOptions();
+                boundOptions.setIncludeIntersectionTypes(true);
+                final CastExpression cast = new CastExpression(_astBuilder.convertType(boundType, boundOptions), argument);
                 cast.putUserData(Keys.SELECTS_OVERLOAD, true);
                 arguments.set(i, cast);
             }
@@ -1568,12 +1584,36 @@ public class AstMethodBodyBuilder {
                 !other.isGenericParameter() &&
                 MetadataHelper.isAssignableFrom(MetadataHelper.erase(other), argumentType)) {
 
-                // Erased, as the bound may mention type variables which cannot be named here either.
-                return MetadataHelper.erase(MetadataHelper.getUpperBound(declared));
+                return eraseBound(MetadataHelper.getUpperBound(declared));
             }
         }
 
         return null;
+    }
+
+    /**
+     * Erases a bound, which may mention type variables which cannot be named at the call site.  All the
+     * types of an intersection are kept, as the argument must satisfy each of them.
+     */
+    private static TypeReference eraseBound(final TypeReference bound) {
+        if (!(bound instanceof ICompoundType)) {
+            return MetadataHelper.erase(bound);
+        }
+
+        final ICompoundType intersection = (ICompoundType) bound;
+        final List<TypeReference> interfaces = new ArrayList<>();
+
+        for (final TypeReference type : intersection.getInterfaces()) {
+            interfaces.add(MetadataHelper.erase(type));
+        }
+
+        final TypeReference baseType = intersection.getBaseType();
+
+        return new CompoundTypeReference(
+            baseType != null ? MetadataHelper.erase(baseType) : null,
+            interfaces,
+            intersection.getResolver()
+        );
     }
 
     private static boolean isOverloaded(final MethodReference method) {

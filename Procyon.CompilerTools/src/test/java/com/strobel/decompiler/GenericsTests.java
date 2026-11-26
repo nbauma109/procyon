@@ -200,6 +200,8 @@ public class GenericsTests extends DecompilerTest {
             BoundOverloads.class,
             createSettings(OPTION_EXPLICIT_TYPE_ARGUMENTS),
             "class BoundOverloads {\n" +
+            "    abstract static class Both implements CharSequence, Runnable {\n" +
+            "    }\n" +
             "    <B extends Appendable> B append(final B buffer) {\n" +
             "        return buffer;\n" +
             "    }\n" +
@@ -222,6 +224,15 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    List<String> wrap(final String value) {\n" +
             "        return (List)this.wrap((CharSequence)value);\n" +
+            "    }\n" +
+            "    void discard(final String value) {\n" +
+            "        this.wrap((CharSequence)value);\n" +
+            "    }\n" +
+            "    <T extends CharSequence & Runnable> T intersect(final T value) {\n" +
+            "        return value;\n" +
+            "    }\n" +
+            "    Both intersect(final Both value) {\n" +
+            "        return (Both)this.intersect((CharSequence & Runnable)value);\n" +
             "    }\n" +
             "}\n"
         );
@@ -233,6 +244,8 @@ public class GenericsTests extends DecompilerTest {
             BoundOverloads.class,
             defaultSettings(),
             "class BoundOverloads {\n" +
+            "    abstract static class Both implements CharSequence, Runnable {\n" +
+            "    }\n" +
             "    <B extends Appendable> B append(final B buffer) {\n" +
             "        return buffer;\n" +
             "    }\n" +
@@ -255,6 +268,15 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    List<String> wrap(final String value) {\n" +
             "        return (List)this.wrap((CharSequence)value);\n" +
+            "    }\n" +
+            "    void discard(final String value) {\n" +
+            "        this.wrap((CharSequence)value);\n" +
+            "    }\n" +
+            "    <T extends CharSequence & Runnable> T intersect(final T value) {\n" +
+            "        return value;\n" +
+            "    }\n" +
+            "    Both intersect(final Both value) {\n" +
+            "        return (Both)this.intersect((CharSequence & Runnable)value);\n" +
             "    }\n" +
             "}\n"
         );
@@ -381,5 +403,20 @@ class BoundOverloads {
     @SuppressWarnings("unchecked")
     List<String> wrap(final String value) {
         return (List) wrap((CharSequence) value);
+    }
+
+    void discard(final String value) {
+        wrap((CharSequence) value);
+    }
+
+    <T extends CharSequence & Runnable> T intersect(final T value) {
+        return value;
+    }
+
+    Both intersect(final Both value) {
+        return (Both) intersect((CharSequence & Runnable) value);
+    }
+
+    abstract static class Both implements CharSequence, Runnable {
     }
 }
