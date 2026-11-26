@@ -1,5 +1,6 @@
 package com.strobel.decompiler;
 
+import java.util.stream.Stream;
 import java.util.function.Supplier;
 import java.util.function.Function;
 import java.util.Optional;
@@ -144,8 +145,35 @@ public class GenericsTests extends DecompilerTest {
             ""
         );
     }
-}
-@SuppressWarnings("unused") // decompiler fixture
+
+    @Test
+    public void testKeepsCastsOfMethodReferencesAdaptingTheResult() {
+        verifyOutput(
+            AdaptedReferences.class,
+            defaultSettings(),
+            "class AdaptedReferences\n" +
+            "{\n" +
+            "    static void print(final Object o) {\n" +
+            "    }\n" +
+            "    static void print(final Integer i) {\n" +
+            "    }\n" +
+            "    void widenedResult() {\n" +
+            "        Stream.of(\"abc\").map((Function<? super String, ?>)String::length).forEach(AdaptedReferences::print);\n" +
+            "    }\n" +
+            "    void widenedConstruction() {\n" +
+            "        Stream.of(\"abc\").map((Function<? super String, ?>)StringBuilder::new).forEach(AdaptedReferences::print);\n" +
+            "    }\n" +
+            "    long overloadedConstruction() {\n" +
+            "        return Stream.of(\"abc\").map((Function<? super String, ?>)StringBuilder::new).count();\n" +
+            "    }\n" +
+            "    long castWhichCannotCompile() {\n" +
+            "        return Stream.of(\"abc\").map(String::toCharArray).mapToLong(a -> a.length).sum();\n" +
+            "    }\n" +
+            "}\n" +
+            ""
+        );
+    }
+}@SuppressWarnings("unused") // decompiler fixture
 class StreamPipelines {
     List<Method> methods(final Class<?> c) {
         return Arrays.stream(c.getMethods()).collect(Collectors.toList());
@@ -189,5 +217,30 @@ class TargetTypedArguments {
 
     void nonGenericResult(final Optional<List<String>> o) {
         strings(o.orElse(Collections.emptyList()));
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class AdaptedReferences {
+    static void print(final Object o) {
+    }
+
+    static void print(final Integer i) {
+    }
+
+    void widenedResult() {
+        Stream.of("abc").map((Function<String, Object>) String::length).forEach(AdaptedReferences::print);
+    }
+
+    void widenedConstruction() {
+        Stream.of("abc").map((Function<String, Object>) StringBuilder::new).forEach(AdaptedReferences::print);
+    }
+
+    long overloadedConstruction() {
+        return Stream.of("abc").map(StringBuilder::new).count();
+    }
+
+    long castWhichCannotCompile() {
+        return Stream.of("abc").map(String::toCharArray).mapToLong(a -> a.length).sum();
     }
 }

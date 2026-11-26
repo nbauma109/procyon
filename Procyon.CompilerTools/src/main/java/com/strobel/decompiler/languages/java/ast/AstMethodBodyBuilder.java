@@ -1337,12 +1337,13 @@ public class AstMethodBodyBuilder {
 
     /**
      * Tells whether an argument takes its type from the parameter it is passed to, so that casting it
-     * would be useless at best.  Such a cast can only restate the type arguments inferred from the
-     * bytecode, and being imprecise because of erasure, it prevents the compiler from inferring the
-     * right ones: {@code collect((Collector<? super Object, ?, List<Object>>) Collectors.toList())}
+     * is not wanted.  The type arguments of such a cast come from the bytecode and are only known up
+     * to erasure: {@code collect((Collector<? super Object, ?, List<String>>) Collectors.toList())}
      * does not compile where {@code collect(Collectors.toList())} does.
      * <p>
-     * The cast is kept when the invoked method is overloaded, as it may then select the overload.
+     * The cast is kept when it can carry some meaning: when the invoked method is overloaded, when a
+     * method reference adapts the return type of its target, or when the compiler would accept it, as
+     * it may then be what selects the type arguments.
      */
     private static boolean isTypedByTarget(
         final MethodReference method,
@@ -1351,26 +1352,31 @@ public class AstMethodBodyBuilder {
         final TypeReference argumentType) {
 
         if (!(parameterType instanceof IGenericInstance) ||
-            !MetadataHelper.isAssignableFrom(MetadataHelper.erase(parameterType), MetadataHelper.erase(argumentType))) {
+            !MetadataHelper.isAssignableFrom(MetadataHelper.erase(parameterType), MetadataHelper.erase(argumentType)) ||
+            isOverloaded(method)) {
 
             return false;
         }
 
         if (argument instanceof MethodGroupExpression) {
-            return !isOverloaded(method) &&
-                   !isOverloaded((MethodReference) argument.getUserData(Keys.MEMBER_REFERENCE));
+            return !isOverloaded((MethodReference) argument.getUserData(Keys.MEMBER_REFERENCE)) &&
+                   !adaptsReturnType((MethodGroupExpression) argument);
         }
 
         if (argument instanceof InvocationExpression) {
             final MemberReference invoked = argument.getUserData(Keys.MEMBER_REFERENCE);
 
-            if (invoked instanceof MethodReference && !isOverloaded(method)) {
+            if (invoked instanceof MethodReference) {
                 final MethodDefinition definition = ((MethodReference) invoked).resolve();
 
-                return isIllegalCast(parameterType, argumentType) ||
-                       definition != null &&
-                       definition.isGenericMethod() &&
-                       definition.getReturnType().containsGenericParameters();
+                if (definition == null) {
+                    return false;
+                }
+
+                return !isLegalCast(
+                    parameterType,
+                    definition.isGenericMethod() ? instantiateWithBounds(definition) : argumentType
+                );
             }
         }
 
@@ -1378,14 +1384,57 @@ public class AstMethodBodyBuilder {
     }
 
     /**
-     * Tells whether the compiler would reject a cast to a parameterization with a {@code ? super X}
-     * type argument because the corresponding source type argument is not a supertype of {@code X}.
+     * Tells whether a method reference implements a function returning something else than what the
+     * referenced method returns, e.g. {@code (Function<String, Object>) String::length}.
      */
-    private static boolean isIllegalCast(final TypeReference targetType, final TypeReference sourceType) {
+    private static boolean adaptsReturnType(final MethodGroupExpression methodGroup) {
+        final DynamicCallSite callSite = methodGroup.getUserData(Keys.DYNAMIC_CALL_SITE);
+        final MethodReference target = (MethodReference) methodGroup.getUserData(Keys.MEMBER_REFERENCE);
+
+        if (callSite == null || target == null ||
+            callSite.getBootstrapArguments().size() < 3 ||
+            !(callSite.getBootstrapArguments().get(2) instanceof IMethodSignature)) {
+
+            return true;
+        }
+
+        final TypeReference implemented = ((IMethodSignature) callSite.getBootstrapArguments().get(2)).getReturnType();
+
+        if (implemented.isPrimitive()) {
+            return false;
+        }
+
+        final TypeReference returned = target.isConstructor() ? target.getDeclaringType()
+                                                              : target.getReturnType();
+
+        return !MetadataHelper.isSameType(
+            MetadataHelper.erase(implemented),
+            MetadataHelper.erase(MetadataHelper.getBoxedTypeOrSelf(returned))
+        );
+    }
+
+    /**
+     * Returns the type of a generic method invocation which nothing but the bounds of the type
+     * variables constrains, as in the operand of a cast.
+     */
+    private static TypeReference instantiateWithBounds(final MethodDefinition method) {
+        final Map<TypeReference, TypeReference> mappings = new HashMap<>();
+
+        for (final GenericParameter parameter : method.getGenericParameters()) {
+            mappings.put(parameter, MetadataHelper.eraseRecursive(parameter));
+        }
+
+        return TypeSubstitutionVisitor.instance().visit(method.getReturnType(), mappings);
+    }
+
+    /**
+     * Tells whether the type arguments of a cast contain those of the type being cast.
+     */
+    private static boolean isLegalCast(final TypeReference targetType, final TypeReference sourceType) {
         if (!(sourceType instanceof IGenericInstance) ||
             !MetadataHelper.isSameType(MetadataHelper.erase(targetType), MetadataHelper.erase(sourceType))) {
 
-            return false;
+            return true;
         }
 
         final List<TypeReference> targets = ((IGenericInstance) targetType).getTypeArguments();
@@ -1395,17 +1444,29 @@ public class AstMethodBodyBuilder {
             final TypeReference target = targets.get(i);
             final TypeReference source = sources.get(i);
 
-            if (target.isWildcardType() &&
-                target.hasSuperBound() &&
-                !source.isWildcardType() &&
-                !source.isGenericParameter() &&
-                !MetadataHelper.isAssignableFrom(source, target.getSuperBound())) {
+            if (source.isWildcardType() || source.isGenericParameter()) {
+                continue;
+            }
 
-                return true;
+            final boolean contained;
+
+            if (!target.isWildcardType()) {
+                contained = target.isGenericParameter() || MetadataHelper.isSameType(target, source);
+            }
+            else if (target.hasSuperBound()) {
+                contained = MetadataHelper.isAssignableFrom(source, target.getSuperBound());
+            }
+            else {
+                contained = !target.hasExtendsBound() ||
+                            MetadataHelper.isAssignableFrom(target.getExtendsBound(), source);
+            }
+
+            if (!contained) {
+                return false;
             }
         }
 
-        return false;
+        return true;
     }
 
     private static boolean isOverloaded(final MethodReference method) {
