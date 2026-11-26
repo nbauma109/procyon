@@ -2523,6 +2523,10 @@ public final class TypeAnalysis {
                     oldMappings.putAll(MetadataHelper.getGenericSubTypeMappings(targetType.getUnderlyingType(), targetType));
                 }
 
+                if (hasThis && targetType != null) {
+                    addInheritedTypeMappings(r != null ? r : actualMethod, targetType, oldMappings);
+                }
+
                 final List<ParameterDefinition> rp = r != null ? r.getParameters() : actualMethod.getParameters();
                 final List<ParameterDefinition> cp = boundMethod.getParameters();
 
@@ -2728,6 +2732,29 @@ public final class TypeAnalysis {
         }
 
         return boundMethod.getReturnType();
+    }
+
+    /**
+     * Binds the type variables of the type which declares an inherited method, as seen from the type of
+     * the invocation target.  Calling {@code Collection.stream()} on a {@code List<String>} must bind the
+     * element type of {@code Collection}, not only that of {@code List}.
+     */
+    private static void addInheritedTypeMappings(
+        final MethodReference method,
+        final TypeReference targetType,
+        final Map<TypeReference, TypeReference> mappings) {
+
+        final TypeReference declaringType = method.getDeclaringType();
+
+        if (!declaringType.isGenericType() || MetadataHelper.isRawType(targetType)) {
+            return;
+        }
+
+        final TypeReference inheritedType = MetadataHelper.asSuper(declaringType, targetType);
+
+        if (inheritedType instanceof IGenericInstance && !MetadataHelper.isRawType(inheritedType)) {
+            mappings.putAll(MetadataHelper.getGenericSubTypeMappings(declaringType.getUnderlyingType(), inheritedType));
+        }
     }
 
     private TypeReference inferTypeForVariable(final Variable v, final TypeReference expectedType) {

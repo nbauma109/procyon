@@ -21,8 +21,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.function.Supplier;
-import java.util.Optional;
 import java.util.function.Function;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import java.util.concurrent.Callable;
@@ -198,7 +198,7 @@ public abstract class AllJavaSyntaxes<E extends Comparable<E>> extends ArrayList
     @SafeVarargs
     protected final <T> Object[] methodReferencesAndLambdas(final T... arguments) {
         Stream.of(arguments).forEach(System.out::println);
-        return Stream.of(arguments).map((Function<? super T, ?>)Object::toString).toArray(Object[]::new);
+        return Stream.of(arguments).map(Object::toString).toArray(Object[]::new);
     }
     void classicFor(final String[] arguments) {
         for (int index = 0; index < arguments.length; ++index) {
@@ -556,7 +556,7 @@ public abstract class AllJavaSyntaxes<E extends Comparable<E>> extends ArrayList
         throw primary;
     }
     String throwExpression(final Integer value) {
-        return Optional.ofNullable(value).map((Function<? super Integer, ? extends String>)Object::toString).orElseThrow(() -> new IllegalArgumentException());
+        return Optional.ofNullable(value).map(Object::toString).orElseThrow(() -> new IllegalArgumentException());
     }
     void synchronizedBlock() {
         synchronized (this) {

@@ -1263,6 +1263,7 @@ public class AstMethodBodyBuilder {
                     start = Math.min(start, end);
 
                     return adjustArgumentsForMethodCallCore(
+                        method,
                         method.getParameters().subList(start, end),
                         arguments.subList(start, end)
                     );
@@ -1270,10 +1271,11 @@ public class AstMethodBodyBuilder {
             }
         }
 
-        return adjustArgumentsForMethodCallCore(method.getParameters(), arguments);
+        return adjustArgumentsForMethodCallCore(method, method.getParameters(), arguments);
     }
 
     private List<Expression> adjustArgumentsForMethodCallCore(
+        final MethodReference method,
         final List<ParameterDefinition> parameters,
         final List<Expression> arguments) {
 
@@ -1302,7 +1304,9 @@ public class AstMethodBodyBuilder {
             final TypeReference aType = resolvedArgument.getType();
             final TypeReference pType = p.getParameterType();
 
-            if (isCastRequired(pType, aType, true)) {
+            if (isCastRequired(pType, aType, true) &&
+                !isTypedByTarget(method, argument, pType, aType)) {
+
                 arguments.set(
                     i,
                     new CastExpression(_astBuilder.convertType(pType, options), argument)
@@ -1329,6 +1333,103 @@ public class AstMethodBodyBuilder {
         }
 
         return arguments.subList(first, last + 1);
+    }
+
+    /**
+     * Tells whether an argument takes its type from the parameter it is passed to, so that casting it
+     * would be useless at best.  Such a cast can only restate the type arguments inferred from the
+     * bytecode, and being imprecise because of erasure, it prevents the compiler from inferring the
+     * right ones: {@code collect((Collector<? super Object, ?, List<Object>>) Collectors.toList())}
+     * does not compile where {@code collect(Collectors.toList())} does.
+     * <p>
+     * The cast is kept when the invoked method is overloaded, as it may then select the overload.
+     */
+    private static boolean isTypedByTarget(
+        final MethodReference method,
+        final Expression argument,
+        final TypeReference parameterType,
+        final TypeReference argumentType) {
+
+        if (!(parameterType instanceof IGenericInstance) ||
+            !MetadataHelper.isAssignableFrom(MetadataHelper.erase(parameterType), MetadataHelper.erase(argumentType))) {
+
+            return false;
+        }
+
+        if (argument instanceof MethodGroupExpression) {
+            return !isOverloaded(method) &&
+                   !isOverloaded((MethodReference) argument.getUserData(Keys.MEMBER_REFERENCE));
+        }
+
+        if (argument instanceof InvocationExpression) {
+            final MemberReference invoked = argument.getUserData(Keys.MEMBER_REFERENCE);
+
+            if (invoked instanceof MethodReference && !isOverloaded(method)) {
+                final MethodDefinition definition = ((MethodReference) invoked).resolve();
+
+                return isIllegalCast(parameterType, argumentType) ||
+                       definition != null &&
+                       definition.isGenericMethod() &&
+                       definition.getReturnType().containsGenericParameters();
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Tells whether the compiler would reject a cast to a parameterization with a {@code ? super X}
+     * type argument because the corresponding source type argument is not a supertype of {@code X}.
+     */
+    private static boolean isIllegalCast(final TypeReference targetType, final TypeReference sourceType) {
+        if (!(sourceType instanceof IGenericInstance) ||
+            !MetadataHelper.isSameType(MetadataHelper.erase(targetType), MetadataHelper.erase(sourceType))) {
+
+            return false;
+        }
+
+        final List<TypeReference> targets = ((IGenericInstance) targetType).getTypeArguments();
+        final List<TypeReference> sources = ((IGenericInstance) sourceType).getTypeArguments();
+
+        for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
+            final TypeReference target = targets.get(i);
+            final TypeReference source = sources.get(i);
+
+            if (target.isWildcardType() &&
+                target.hasSuperBound() &&
+                !source.isWildcardType() &&
+                !source.isGenericParameter() &&
+                !MetadataHelper.isAssignableFrom(source, target.getSuperBound())) {
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static boolean isOverloaded(final MethodReference method) {
+        final TypeDefinition declaringType = method != null ? method.getDeclaringType().resolve() : null;
+
+        if (declaringType == null) {
+            return true;
+        }
+
+        final List<MethodReference> candidates = MetadataHelper.findMethods(
+            declaringType,
+            MetadataFilters.matchName(method.getName())
+        );
+
+        final int parameterCount = method.getParameters().size();
+        int matches = 0;
+
+        for (final MethodReference candidate : candidates) {
+            if (candidate.getParameters().size() == parameterCount) {
+                ++matches;
+            }
+        }
+
+        return matches > 1;
     }
 
     @SuppressWarnings("SameParameterValue")

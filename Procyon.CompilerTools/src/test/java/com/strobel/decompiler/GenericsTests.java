@@ -1,5 +1,13 @@
 package com.strobel.decompiler;
 
+import java.util.function.Supplier;
+import java.util.function.Function;
+import java.util.Optional;
+import java.util.Collections;
+import java.util.stream.Collectors;
+import java.util.Map;
+import java.util.ArrayList;
+import java.lang.reflect.Method;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -82,5 +90,104 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "}\n"
         );
+    }
+
+    @Test
+    public void testNoImpreciseCastsInStreamPipelines() {
+        verifyOutput(
+            StreamPipelines.class,
+            defaultSettings(),
+            "class StreamPipelines {\n" +
+            "    static class Names extends ArrayList<String> {\n" +
+            "        private static final long serialVersionUID = 1L;\n" +
+            "    }\n" +
+            "    List<Method> methods(final Class<?> c) {\n" +
+            "        return Arrays.stream(c.getMethods()).collect(Collectors.toList());\n" +
+            "    }\n" +
+            "    String join(final List<String> list) {\n" +
+            "        return list.stream().map(String::trim).collect(Collectors.joining(\"|\"));\n" +
+            "    }\n" +
+            "    Map<String, Integer> lengths(final List<String> list) {\n" +
+            "        return list.stream().collect(Collectors.toMap(String::trim, String::length));\n" +
+            "    }\n" +
+            "    long inherited(final ArrayList<String> list, final Names names) {\n" +
+            "        return list.stream().map(String::trim).count() + names.stream().map(String::trim).count();\n" +
+            "    }\n" +
+            "}\n" +
+            ""
+        );
+    }
+
+    @Test
+    public void testCastsOnlyWhereTheTargetDoesNotTypeTheArgument() {
+        verifyOutput(
+            TargetTypedArguments.class,
+            defaultSettings(),
+            "class TargetTypedArguments\n" +
+            "{\n" +
+            "    static void strings(final List<String> list) {\n" +
+            "    }\n" +
+            "    static void take(final Function<String, String> f) {\n" +
+            "    }\n" +
+            "    static void take(final Supplier<String> s) {\n" +
+            "    }\n" +
+            "    void genericResult() {\n" +
+            "        strings(Collections.emptyList());\n" +
+            "    }\n" +
+            "    void overloadedWithMethodReference() {\n" +
+            "        take(String::trim);\n" +
+            "    }\n" +
+            "    void nonGenericResult(final Optional<List<String>> o) {\n" +
+            "        strings(o.orElse(Collections.emptyList()));\n" +
+            "    }\n" +
+            "}\n" +
+            ""
+        );
+    }
+}
+@SuppressWarnings("unused") // decompiler fixture
+class StreamPipelines {
+    List<Method> methods(final Class<?> c) {
+        return Arrays.stream(c.getMethods()).collect(Collectors.toList());
+    }
+
+    String join(final List<String> list) {
+        return list.stream().map(String::trim).collect(Collectors.joining("|"));
+    }
+
+    Map<String, Integer> lengths(final List<String> list) {
+        return list.stream().collect(Collectors.toMap(String::trim, String::length));
+    }
+
+    long inherited(final ArrayList<String> list, final Names names) {
+        return list.stream().map(String::trim).count() + names.stream().map(String::trim).count();
+    }
+
+    static class Names extends ArrayList<String> {
+        private static final long serialVersionUID = 1L;
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class TargetTypedArguments {
+    static void strings(final List<String> list) {
+    }
+
+    static void take(final Function<String, String> f) {
+    }
+
+    static void take(final Supplier<String> s) {
+    }
+
+    void genericResult() {
+        strings(Collections.emptyList());
+    }
+
+    void overloadedWithMethodReference() {
+        take(String::trim);
+    }
+
+    void nonGenericResult(final Optional<List<String>> o) {
+        strings(o.orElse(Collections.emptyList()));
     }
 }
