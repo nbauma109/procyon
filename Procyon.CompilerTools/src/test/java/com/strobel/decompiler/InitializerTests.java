@@ -30,6 +30,237 @@ public class InitializerTests extends DecompilerTest {
         );
     }
 
+    @Test
+    public void testInitializersReadingFieldsAssignedByTheConstructorStayThere() {
+        verifyOutput(
+            ReadsConstructorField.class,
+            defaultSettings(),
+            "static class ReadsConstructorField {\n" +
+            "    private final char[] delimiter;\n" +
+            "    ReadsConstructorField(final String text) {\n" +
+            "        this.delimiter = text.toCharArray();\n" +
+            "        this.buffer = new char[this.delimiter.length];\n" +
+            "        this.size = this.buffer.length;\n" +
+            "    }\n" +
+            "    private final Object lock = new Object();\n" +
+            "    private final char[] buffer;\n" +
+            "    private final int size;\n" +
+            "}\n"
+        );
+    }
+
+    static class ReadsConstructorField {
+        private final char[] delimiter;
+        private final char[] buffer;
+        private final int size;
+        private final Object lock;
+
+        ReadsConstructorField(final String text) {
+            this.lock = new Object();
+            this.delimiter = text.toCharArray();
+            this.buffer = new char[this.delimiter.length];
+            this.size = this.buffer.length;
+        }
+    }
+
+    @Test
+    public void testFieldsAssignedSeveralTimesAreNotMoved() {
+        verifyOutput(
+            AssignedTwice.class,
+            defaultSettings(),
+            "static class AssignedTwice {\n" +
+            "    AssignedTwice(final int value) {\n" +
+            "        this.twice = 1;\n" +
+            "        this.twice = 2;\n" +
+            "        this.parameterFirst = value;\n" +
+            "        this.parameterFirst = 3;\n" +
+            "        this.reader = this.twice;\n" +
+            "    }\n" +
+            "    private int twice;\n" +
+            "    private int parameterFirst;\n" +
+            "    private final int reader;\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testInitializersMayReadFieldsKeepingTheirDefaultValue() {
+        verifyOutput(
+            ReadsDefaultValue.class,
+            defaultSettings(),
+            "static class ReadsDefaultValue {\n" +
+            "    private int unset;\n" +
+            "    ReadsDefaultValue() {\n" +
+            "    }\n" +
+            "    private final int first = this.unset + 1;\n" +
+            "    private final int second = this.readFirst();\n" +
+            "    private int readFirst() {\n" +
+            "        return this.first;\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    static class AssignedTwice {
+        private int twice;
+        private int parameterFirst;
+        private final int reader;
+
+        AssignedTwice(final int value) {
+            this.twice = 1;
+            this.twice = 2;
+            this.parameterFirst = value;
+            this.parameterFirst = 3;
+            this.reader = this.twice;
+        }
+    }
+
+    static class ReadsDefaultValue {
+        private int unset;
+        private final int first;
+        private final int second;
+
+        ReadsDefaultValue() {
+            this.first = this.unset + 1;
+            this.second = this.readFirst();
+        }
+
+        private int readFirst() {
+            return this.first;
+        }
+    }
+
+    @Test
+    public void testInitializersDoNotOvertakeTheStatementsTheyDependOn() {
+        verifyOutput(
+            CallsAfterAssignments.class,
+            defaultSettings(),
+            "static class CallsAfterAssignments {\n" +
+            "    CallsAfterAssignments() {\n" +
+            "        this.x = 1;\n" +
+            "        this.x = 2;\n" +
+            "        this.y = this.readX();\n" +
+            "    }\n" +
+            "    private int x;\n" +
+            "    private final int y;\n" +
+            "    private int readX() {\n" +
+            "        return this.x;\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testAssignmentsDoNotOvertakeEarlierReads() {
+        verifyOutput(
+            ReadBeforeWrite.class,
+            defaultSettings(),
+            "static class ReadBeforeWrite {\n" +
+            "    ReadBeforeWrite() {\n" +
+            "        this.x = 1;\n" +
+            "        this.x = 2;\n" +
+            "        this.y = this.x + this.z;\n" +
+            "        this.z = 3;\n" +
+            "    }\n" +
+            "    private int x;\n" +
+            "    private final int y;\n" +
+            "    private int z;\n" +
+            "}\n"
+        );
+    }
+
+    static class CallsAfterAssignments {
+        private int x;
+        private final int y;
+
+        CallsAfterAssignments() {
+            this.x = 1;
+            this.x = 2;
+            this.y = this.readX();
+        }
+
+        private int readX() {
+            return this.x;
+        }
+    }
+
+    static class ReadBeforeWrite {
+        private int x;
+        private final int y;
+        private int z;
+
+        ReadBeforeWrite() {
+            this.x = 1;
+            this.x = 2;
+            this.y = this.x + this.z;
+            this.z = 3;
+        }
+    }
+
+    @Test
+    public void testAssignmentsDoNotOvertakeCallsWhichMayReadThem() {
+        verifyOutput(
+            ReadThroughCall.class,
+            defaultSettings(),
+            "static class ReadThroughCall {\n" +
+            "    ReadThroughCall() {\n" +
+            "        this.noop();\n" +
+            "        this.x = this.readY();\n" +
+            "        this.y = 3;\n" +
+            "    }\n" +
+            "    private final int x;\n" +
+            "    private int y;\n" +
+            "    private void noop() {\n" +
+            "    }\n" +
+            "    private int readY() {\n" +
+            "        return this.y;\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testAssignmentsDoNotOvertakeCallsReceivingTheInstance() {
+        verifyOutput(
+            EscapingInstance.class,
+            defaultSettings(),
+            "static class EscapingInstance {\n" +
+            "    EscapingInstance() {\n" +
+            "        System.out.println(this);\n" +
+            "        this.y = 3;\n" +
+            "    }\n" +
+            "    private int y;\n" +
+            "}\n"
+        );
+    }
+
+    static class ReadThroughCall {
+        private final int x;
+        private int y;
+
+        ReadThroughCall() {
+            this.noop();
+            this.x = this.readY();
+            this.y = 3;
+        }
+
+        private void noop() {
+        }
+
+        private int readY() {
+            return this.y;
+        }
+    }
+
+    static class EscapingInstance {
+        private int y;
+
+        EscapingInstance() {
+            System.out.println(this);
+            this.y = 3;
+        }
+    }
+
     @Rule
     public final TemporaryFolder folder = new TemporaryFolder();
 

@@ -49,4 +49,41 @@ public class ModifierTests extends DecompilerTest {
             "}\n"
         );
     }
+
+    @Test
+    public void testStaticInterfaceMethodsAreNotDefaultMethods() {
+        verifyOutput(
+            InterfaceWithStaticMethods.class,
+            defaultSettings(),
+            "interface InterfaceWithStaticMethods {\n" +
+            "    void abstractMethod();\n" +
+            "    static int one() {\n" +
+            "        return 1;\n" +
+            "    }\n" +
+            "    static <T> T same(final T value) {\n" +
+            "        return value;\n" +
+            "    }\n" +
+            "    default int twice() {\n" +
+            "        return 2 * one();\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+interface InterfaceWithStaticMethods {
+    static int one() {
+        return 1;
+    }
+
+    static <T> T same(final T value) {
+        return value;
+    }
+
+    default int twice() {
+        return 2 * one();
+    }
+
+    void abstractMethod();
 }
