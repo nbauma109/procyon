@@ -88,8 +88,19 @@ jobs:
           PROJECT: ${{ matrix.project }}
         run: |
           jar="$(find decompiler -name 'procyon-decompiler-*.jar' | head -n 1)"
-          # Bisection takes hours on projects with many regressions: run it locally.
-          python3 roundtrip/roundtrip.py "${PROJECT}" --jar "${jar}" --no-bisect --test-timeout 900
+          # Maven Central may answer "429 Too Many Requests" to the parallel jobs: try again later.
+          for attempt in 1 2 3; do
+            # Bisection takes hours on projects with many regressions: run it locally.
+            if python3 roundtrip/roundtrip.py "${PROJECT}" --jar "${jar}" --no-bisect --test-timeout 900; then
+              exit 0
+            fi
+            if (( attempt < 3 )); then
+              # Maven remembers failed downloads and would not try them again.
+              find ~/.m2/repository -name '*.lastUpdated' -delete 2>/dev/null || true
+              sleep $(( attempt * 120 ))
+            fi
+          done
+          exit 1
 
       - name: Summarize
         if: always()
