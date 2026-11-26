@@ -38,6 +38,8 @@ import com.strobel.decompiler.languages.java.ast.ExpressionStatement;
 import com.strobel.decompiler.languages.java.ast.FieldDeclaration;
 import com.strobel.decompiler.languages.java.ast.Identifier;
 import com.strobel.decompiler.languages.java.ast.InvocationExpression;
+import com.strobel.decompiler.languages.java.ast.IdentifierExpression;
+import com.strobel.decompiler.languages.java.ast.ParameterDeclaration;
 import com.strobel.decompiler.languages.java.ast.Keys;
 import com.strobel.decompiler.languages.java.ast.MemberReferenceExpression;
 import com.strobel.decompiler.languages.java.ast.MethodDeclaration;
@@ -46,6 +48,7 @@ import com.strobel.decompiler.languages.java.ast.ThisReferenceExpression;
 import com.strobel.decompiler.languages.java.ast.VariableInitializer;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -140,7 +143,8 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
 	                    LocalVariableTableAttribute localVariableTable = SourceAttribute.find(AttributeNames.LocalVariableTable, methodDefinition.getSourceAttributes());
 	                    IdentifierGatherer identifierGatherer = new IdentifierGatherer();
 	                    initializer.acceptVisitor(identifierGatherer, null);
-	                    if (localVariableTable == null || identifierGatherer.containsNoneOf(localVariableTable.getEntries())) {
+	                    if ((localVariableTable == null || identifierGatherer.containsNoneOf(localVariableTable.getEntries()))
+	                            && !usesVariablesOf(entityDeclaration, initializer)) {
 	                        fieldDeclaration.setLineNumber(lineNumber);
 	                        FieldLocation fieldLocation = new FieldLocation(memberReference.getFullName(), offset);
 	                        fieldInitLocations.putIfAbsent(fieldLocation, new FieldInit(fieldDeclaration));
@@ -151,6 +155,46 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
             }
         }
         return super.visitAssignmentExpression(node, data);
+    }
+
+    /**
+     * Tells whether an expression uses a parameter or a local variable of the method which contains it,
+     * and therefore cannot leave it.  The local variable table cannot tell when it is missing, as the
+     * names of the variables are then made up by the decompiler.
+     */
+    private static boolean usesVariablesOf(final EntityDeclaration method, final Expression expression) {
+        final Set<String> used = new HashSet<>();
+        final Set<String> declared = new HashSet<>();
+
+        expression.acceptVisitor(new DepthFirstAstVisitor<Void, Void>() {
+            @Override
+            public Void visitIdentifierExpression(final IdentifierExpression node, final Void data) {
+                used.add(node.getIdentifier());
+                return super.visitIdentifierExpression(node, data);
+            }
+        }, null);
+
+        method.acceptVisitor(new DepthFirstAstVisitor<Void, Void>() {
+            @Override
+            protected Void visitChildren(final AstNode node, final Void data) {
+                // Variables declared within the expression, such as lambda parameters, move with it.
+                return node == expression ? null : super.visitChildren(node, data);
+            }
+
+            @Override
+            public Void visitParameterDeclaration(final ParameterDeclaration node, final Void data) {
+                declared.add(node.getName());
+                return super.visitParameterDeclaration(node, data);
+            }
+
+            @Override
+            public Void visitVariableInitializer(final VariableInitializer node, final Void data) {
+                declared.add(node.getName());
+                return super.visitVariableInitializer(node, data);
+            }
+        }, null);
+
+        return !Collections.disjoint(used, declared);
     }
 
     @Override
