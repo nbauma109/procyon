@@ -22,6 +22,7 @@ import com.strobel.assembler.ir.attributes.LocalVariableTableAttribute;
 import com.strobel.assembler.ir.attributes.LocalVariableTableEntry;
 import com.strobel.assembler.ir.attributes.SourceAttribute;
 import com.strobel.assembler.metadata.FieldDefinition;
+import com.strobel.assembler.metadata.FieldReference;
 import com.strobel.assembler.metadata.MemberReference;
 import com.strobel.assembler.metadata.MethodDefinition;
 import com.strobel.decompiler.languages.java.LineNumberTableConverter;
@@ -43,15 +44,21 @@ import com.strobel.decompiler.languages.java.ast.ParameterDeclaration;
 import com.strobel.decompiler.languages.java.ast.Keys;
 import com.strobel.decompiler.languages.java.ast.MemberReferenceExpression;
 import com.strobel.decompiler.languages.java.ast.MethodDeclaration;
+import com.strobel.decompiler.languages.java.ast.ObjectCreationExpression;
 import com.strobel.decompiler.languages.java.ast.Roles;
 import com.strobel.decompiler.languages.java.ast.ThisReferenceExpression;
 import com.strobel.decompiler.languages.java.ast.VariableDeclarationStatement;
 import com.strobel.decompiler.languages.java.ast.VariableInitializer;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -60,6 +67,8 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
 
     private ConcurrentHashMap<String, FieldDeclaration> fieldDeclarations = new ConcurrentHashMap<>();
     private ConcurrentHashMap<FieldLocation, FieldInit> fieldInitLocations = new ConcurrentHashMap<>();
+    /** Every assignment to a field found in a constructor or a type initializer, by field name. */
+    private final Map<String, Set<AssignmentExpression>> initializationAssignments = new HashMap<>();
     private ConcurrentHashMap<MethodDefinition, ConstructorDeclaration> constructionDefinitionToDeclaration = new ConcurrentHashMap<>();
     
     @Override
@@ -122,6 +131,7 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
 
     @Override
     public Void visitAssignmentExpression(AssignmentExpression node, Void data) {
+        recordInitializationAssignment(node);
         AstNode parent = node.getParent();
         if (parent instanceof ExpressionStatement 
                 && parent.getParent() instanceof BlockStatement 
@@ -256,12 +266,211 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
     public void run(AstNode compilationUnit) {
         compilationUnit.acceptVisitor(new ConstructorGatherer(), null);
         compilationUnit.acceptVisitor(this, null);
-        for (FieldInit fieldInit : fieldInitLocations.values()) {
-            if (fieldInit.isInAllConstructors() || fieldInit.isInTypeInitializer()) {
-                fieldInit.removeFieldInitStatements();
-                fieldInit.createVariableInitializer();
+        for (FieldInit fieldInit : movableFieldInits()) {
+            fieldInit.removeFieldInitStatements();
+            fieldInit.createVariableInitializer();
+        }
+    }
+
+    private void recordInitializationAssignment(final AssignmentExpression assignment) {
+        final MemberReference reference = assignment.getLeft().getUserData(Keys.MEMBER_REFERENCE);
+
+        if (!(reference instanceof FieldReference)) {
+            return;
+        }
+
+        for (AstNode node = assignment.getParent(); node != null; node = node.getParent()) {
+            final MethodDefinition method = node.getUserData(Keys.METHOD_DEFINITION);
+
+            if (method != null) {
+                if (method.isConstructor() || method.isTypeInitializer()) {
+                    initializationAssignments.computeIfAbsent(
+                        reference.getFullName(),
+                        name -> Collections.newSetFromMap(new IdentityHashMap<>())
+                    ).add(assignment);
+                }
+                return;
             }
         }
+    }
+
+    /**
+     * Returns the initializations which can become field initializers.  A field qualifies only if the
+     * statements to move are all of its assignments: the others would otherwise run in a different
+     * order.  As field initializers run first, they must not read a field which is still assigned
+     * later either.
+     */
+    private Collection<FieldInit> movableFieldInits() {
+        final Map<String, FieldInit> movable = new LinkedHashMap<>();
+
+        for (final FieldInit fieldInit : fieldInitLocations.values()) {
+            if ((fieldInit.isInAllConstructors() || fieldInit.isInTypeInitializer()) &&
+                initializationAssignments.get(fieldInit.fieldName()).size() == fieldInit.countStatements()) {
+
+                movable.put(fieldInit.fieldName(), fieldInit);
+            }
+        }
+
+        // Keeping one initialization in place may in turn keep those which depend on it.
+        boolean removed;
+
+        do {
+            final Set<AstNode> movedStatements = Collections.newSetFromMap(new IdentityHashMap<>());
+
+            for (final FieldInit fieldInit : movable.values()) {
+                fieldInit.fieldInitStatements.forEach(init -> movedStatements.add(init.statement));
+            }
+
+            removed = movable.values().removeIf(
+                fieldInit -> readsDeferredField(fieldInit, movable.keySet()) ||
+                             overtakesDependentStatement(fieldInit, movedStatements)
+            );
+        }
+        while (removed);
+
+        return movable.values();
+    }
+
+    /**
+     * Tells whether moving an initialization would make it run before a statement staying in place
+     * which uses its field or may read it through a call, or, if the initializer depends on the state
+     * of the class, before one which uses any member of the class.
+     */
+    private boolean overtakesDependentStatement(final FieldInit fieldInit, final Set<AstNode> movedStatements) {
+        final FieldDefinition field = fieldInit.declaration.getUserData(Keys.FIELD_DEFINITION);
+        final String owner = field.getDeclaringType().getInternalName();
+
+        for (final FieldInitStatement init : fieldInit.fieldInitStatements) {
+            final boolean dependsOnState = containsCall(init.initializer) ||
+                                           usesMemberOf(init.initializer, owner);
+
+            for (final AstNode statement : precedingStatements(init.statement)) {
+                if (!movedStatements.contains(statement) &&
+                    (references(statement).stream().anyMatch(r -> r.getFullName().equals(field.getFullName())) ||
+                     dependsOnState && usesMemberOf(statement, owner) ||
+                     mayReadThroughCall(statement, field.isStatic(), owner))) {
+
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /** Returns the statements which run before the given one in its constructor or type initializer. */
+    private static List<AstNode> precedingStatements(final AstNode statement) {
+        final List<AstNode> preceding = new ArrayList<>();
+
+        for (AstNode node = statement.getPreviousSibling(); node != null; node = node.getPreviousSibling()) {
+            preceding.add(node);
+        }
+
+        // A type initializer may have been split into several blocks, which are sibling declarations.
+        final AstNode declaration = statement.getParent().getParent();
+        final MethodDefinition method = declaration.getUserData(Keys.METHOD_DEFINITION);
+
+        if (method.isTypeInitializer()) {
+            for (AstNode node = declaration.getPreviousSibling(); node != null; node = node.getPreviousSibling()) {
+                if (node.getUserData(Keys.METHOD_DEFINITION) == method) {
+                    ((MethodDeclaration) node).getBody().getStatements().forEach(preceding::add);
+                }
+            }
+        }
+
+        return preceding;
+    }
+
+    /**
+     * Any code can read a static field.  An instance under construction is only known to the code of
+     * its class, and to the code it is passed to.
+     */
+    private static boolean mayReadThroughCall(final AstNode statement, final boolean isStatic, final String owner) {
+        return containsCall(statement) &&
+               (isStatic || usesMemberOf(statement, owner) || containsThis(statement));
+    }
+
+    private static boolean containsThis(final AstNode root) {
+        final boolean[] found = new boolean[1];
+
+        root.acceptVisitor(new DepthFirstAstVisitor<Void, Void>() {
+            @Override
+            public Void visitThisReferenceExpression(final ThisReferenceExpression node, final Void data) {
+                found[0] = true;
+                return null;
+            }
+        }, null);
+
+        return found[0];
+    }
+
+    private static boolean usesMemberOf(final AstNode node, final String owner) {
+        return references(node).stream().anyMatch(r -> r.getDeclaringType().getInternalName().equals(owner));
+    }
+
+    /** Returns the members referenced anywhere within a node. */
+    private static List<MemberReference> references(final AstNode root) {
+        final List<MemberReference> references = new ArrayList<>();
+
+        root.acceptVisitor(new DepthFirstAstVisitor<Void, Void>() {
+            @Override
+            protected Void visitChildren(final AstNode node, final Void data) {
+                final MemberReference reference = node.getUserData(Keys.MEMBER_REFERENCE);
+
+                if (reference != null) {
+                    references.add(reference);
+                }
+
+                return super.visitChildren(node, data);
+            }
+        }, null);
+
+        return references;
+    }
+
+    private static boolean containsCall(final AstNode root) {
+        final boolean[] found = new boolean[1];
+
+        root.acceptVisitor(new DepthFirstAstVisitor<Void, Void>() {
+            @Override
+            public Void visitInvocationExpression(final InvocationExpression node, final Void data) {
+                found[0] = true;
+                return null;
+            }
+
+            @Override
+            public Void visitObjectCreationExpression(final ObjectCreationExpression node, final Void data) {
+                found[0] = true;
+                return null;
+            }
+        }, null);
+
+        return found[0];
+    }
+
+    private boolean readsDeferredField(final FieldInit fieldInit, final Set<String> moved) {
+        final Set<String> read = new HashSet<>();
+
+        fieldInit.fieldInitStatements.get(0).initializer.acceptVisitor(new DepthFirstAstVisitor<Void, Void>() {
+            @Override
+            public Void visitMemberReferenceExpression(final MemberReferenceExpression node, final Void data) {
+                final MemberReference reference = node.getUserData(Keys.MEMBER_REFERENCE);
+
+                if (reference instanceof FieldReference) {
+                    read.add(reference.getFullName());
+                }
+
+                return super.visitMemberReferenceExpression(node, data);
+            }
+        }, null);
+
+        for (final String name : read) {
+            if (initializationAssignments.containsKey(name) && !moved.contains(name)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private class FieldInit {
@@ -307,6 +516,15 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
                 }
             }
             return constructorCount;
+        }
+
+        /** A constructor reached through {@code this(...)} calls is visited more than once. */
+        private long countStatements() {
+            return fieldInitStatements.stream().map(init -> init.statement).distinct().count();
+        }
+
+        private String fieldName() {
+            return declaration.getUserData(Keys.FIELD_DEFINITION).getFullName();
         }
 
         public boolean isInTypeInitializer() {
