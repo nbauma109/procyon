@@ -44,6 +44,7 @@ import com.strobel.decompiler.languages.java.ast.ParameterDeclaration;
 import com.strobel.decompiler.languages.java.ast.Keys;
 import com.strobel.decompiler.languages.java.ast.MemberReferenceExpression;
 import com.strobel.decompiler.languages.java.ast.MethodDeclaration;
+import com.strobel.decompiler.languages.java.ast.ObjectCreationExpression;
 import com.strobel.decompiler.languages.java.ast.Roles;
 import com.strobel.decompiler.languages.java.ast.ThisReferenceExpression;
 import com.strobel.decompiler.languages.java.ast.VariableDeclarationStatement;
@@ -310,12 +311,117 @@ public class RewriteInitForLineStretchTransform extends DepthFirstAstVisitor<Voi
             }
         }
 
-        // Keeping one initialization in place may in turn keep those which read its field.
-        while (movable.values().removeIf(fieldInit -> readsDeferredField(fieldInit, movable.keySet()))) {
-            continue;
+        // Keeping one initialization in place may in turn keep those which depend on it.
+        boolean removed;
+
+        do {
+            final Set<AstNode> movedStatements = Collections.newSetFromMap(new IdentityHashMap<>());
+
+            for (final FieldInit fieldInit : movable.values()) {
+                fieldInit.fieldInitStatements.forEach(init -> movedStatements.add(init.statement));
+            }
+
+            removed = movable.values().removeIf(
+                fieldInit -> readsDeferredField(fieldInit, movable.keySet()) ||
+                             overtakesDependentStatement(fieldInit, movedStatements)
+            );
         }
+        while (removed);
 
         return movable.values();
+    }
+
+    /**
+     * Tells whether moving an initialization would make it run before a statement staying in place
+     * which uses its field, or, if the initializer depends on the state of the class, before one which
+     * uses any member of the class.
+     */
+    private boolean overtakesDependentStatement(final FieldInit fieldInit, final Set<AstNode> movedStatements) {
+        final FieldDefinition field = fieldInit.declaration.getUserData(Keys.FIELD_DEFINITION);
+        final String owner = field.getDeclaringType().getInternalName();
+
+        for (final FieldInitStatement init : fieldInit.fieldInitStatements) {
+            final boolean dependsOnState = containsCall(init.initializer) ||
+                                           usesMemberOf(init.initializer, owner);
+
+            for (final AstNode statement : precedingStatements(init.statement)) {
+                if (!movedStatements.contains(statement) &&
+                    (references(statement).stream().anyMatch(r -> r.getFullName().equals(field.getFullName())) ||
+                     dependsOnState && usesMemberOf(statement, owner))) {
+
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /** Returns the statements which run before the given one in its constructor or type initializer. */
+    private static List<AstNode> precedingStatements(final AstNode statement) {
+        final List<AstNode> preceding = new ArrayList<>();
+
+        for (AstNode node = statement.getPreviousSibling(); node != null; node = node.getPreviousSibling()) {
+            preceding.add(node);
+        }
+
+        // A type initializer may have been split into several blocks, which are sibling declarations.
+        final AstNode declaration = statement.getParent().getParent();
+        final MethodDefinition method = declaration.getUserData(Keys.METHOD_DEFINITION);
+
+        if (method.isTypeInitializer()) {
+            for (AstNode node = declaration.getPreviousSibling(); node != null; node = node.getPreviousSibling()) {
+                if (node.getUserData(Keys.METHOD_DEFINITION) == method) {
+                    ((MethodDeclaration) node).getBody().getStatements().forEach(preceding::add);
+                }
+            }
+        }
+
+        return preceding;
+    }
+
+    private static boolean usesMemberOf(final AstNode node, final String owner) {
+        return references(node).stream().anyMatch(r -> r.getDeclaringType().getInternalName().equals(owner));
+    }
+
+    /** Returns the members referenced anywhere within a node. */
+    private static List<MemberReference> references(final AstNode root) {
+        final List<MemberReference> references = new ArrayList<>();
+
+        root.acceptVisitor(new DepthFirstAstVisitor<Void, Void>() {
+            @Override
+            protected Void visitChildren(final AstNode node, final Void data) {
+                final MemberReference reference = node.getUserData(Keys.MEMBER_REFERENCE);
+
+                if (reference != null) {
+                    references.add(reference);
+                }
+
+                return super.visitChildren(node, data);
+            }
+        }, null);
+
+        return references;
+    }
+
+    private static boolean containsCall(final AstNode root) {
+        final boolean[] found = new boolean[1];
+
+        root.acceptVisitor(new DepthFirstAstVisitor<Void, Void>() {
+            @Override
+            public Void visitInvocationExpression(final InvocationExpression node, final Void data) {
+                found[0] = true;
+                return null;
+            }
+
+            @Override
+            public Void visitObjectCreationExpression(final ObjectCreationExpression node, final Void data) {
+                found[0] = true;
+                return null;
+            }
+        }, null);
+
+        return found[0];
     }
 
     private boolean readsDeferredField(final FieldInit fieldInit, final Set<String> moved) {

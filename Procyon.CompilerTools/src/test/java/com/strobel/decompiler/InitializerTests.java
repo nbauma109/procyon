@@ -130,6 +130,73 @@ public class InitializerTests extends DecompilerTest {
         }
     }
 
+    @Test
+    public void testInitializersDoNotOvertakeTheStatementsTheyDependOn() {
+        verifyOutput(
+            CallsAfterAssignments.class,
+            defaultSettings(),
+            "static class CallsAfterAssignments {\n" +
+            "    CallsAfterAssignments() {\n" +
+            "        this.x = 1;\n" +
+            "        this.x = 2;\n" +
+            "        this.y = this.readX();\n" +
+            "    }\n" +
+            "    private int x;\n" +
+            "    private final int y;\n" +
+            "    private int readX() {\n" +
+            "        return this.x;\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testAssignmentsDoNotOvertakeEarlierReads() {
+        verifyOutput(
+            ReadBeforeWrite.class,
+            defaultSettings(),
+            "static class ReadBeforeWrite {\n" +
+            "    ReadBeforeWrite() {\n" +
+            "        this.x = 1;\n" +
+            "        this.x = 2;\n" +
+            "        this.y = this.x + this.z;\n" +
+            "        this.z = 3;\n" +
+            "    }\n" +
+            "    private int x;\n" +
+            "    private final int y;\n" +
+            "    private int z;\n" +
+            "}\n"
+        );
+    }
+
+    static class CallsAfterAssignments {
+        private int x;
+        private final int y;
+
+        CallsAfterAssignments() {
+            this.x = 1;
+            this.x = 2;
+            this.y = this.readX();
+        }
+
+        private int readX() {
+            return this.x;
+        }
+    }
+
+    static class ReadBeforeWrite {
+        private int x;
+        private final int y;
+        private int z;
+
+        ReadBeforeWrite() {
+            this.x = 1;
+            this.x = 2;
+            this.y = this.x + this.z;
+            this.z = 3;
+        }
+    }
+
     @Rule
     public final TemporaryFolder folder = new TemporaryFolder();
 
