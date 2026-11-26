@@ -1216,9 +1216,29 @@ public class AstMethodBodyBuilder {
             if (target.isNull()) {
                 invocation.setOffset(byteCode.getOffset());
             }
+
+            if (widened) {
+                invocation.putUserData(Keys.MEMBER_REFERENCE, methodReference);
+                return eraseParameterizedResult(methodReference, invocation);
+            }
         }
 
         invocation.putUserData(Keys.MEMBER_REFERENCE, methodReference);
+
+        return invocation;
+    }
+
+    /**
+     * Widening an argument also changes the type arguments of a parameterized result which depends on
+     * it, and no cast of that result survives erasure: the raw type is compatible with what was
+     * expected.
+     */
+    private Expression eraseParameterizedResult(final MethodReference method, final InvocationExpression invocation) {
+        final TypeReference declared = method.resolve().getReturnType();
+
+        if (declared instanceof IGenericInstance && declared.containsGenericParameters()) {
+            return new CastExpression(_astBuilder.convertType(MetadataHelper.erase(declared)), invocation);
+        }
 
         return invocation;
     }

@@ -217,6 +217,12 @@ public class GenericsTests extends DecompilerTest {
             "    String take(final String value) {\n" +
             "        return (String)this.take((Comparable)value);\n" +
             "    }\n" +
+            "    <T extends CharSequence> List<T> wrap(final T value) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<String> wrap(final String value) {\n" +
+            "        return (List)this.wrap((CharSequence)value);\n" +
+            "    }\n" +
             "}\n"
         );
     }
@@ -243,6 +249,12 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    String take(final String value) {\n" +
             "        return (String)this.take((Comparable)value);\n" +
+            "    }\n" +
+            "    <T extends CharSequence> List<T> wrap(final T value) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<String> wrap(final String value) {\n" +
+            "        return (List)this.wrap((CharSequence)value);\n" +
             "    }\n" +
             "}\n"
         );
@@ -360,5 +372,14 @@ class BoundOverloads {
     @SuppressWarnings("unchecked")
     String take(final String value) {
         return (String) take((Comparable) value);
+    }
+
+    <T extends CharSequence> List<T> wrap(final T value) {
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    List<String> wrap(final String value) {
+        return (List) wrap((CharSequence) value);
     }
 }
