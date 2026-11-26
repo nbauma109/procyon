@@ -3640,7 +3640,12 @@ public final class AstOptimizer {
 //                    }
 //                }
 
-                AstOptimizer.optimize(innerContext, body, AstOptimizationStep.InlineVariables2);
+                //
+                // Run the whole block-level optimization loop until it reaches a fixed point.  Stopping
+                // after the first round would leave behind constructs which need several of them, like
+                // an object creation whose constructor arguments create objects themselves.
+                //
+                AstOptimizer.optimize(innerContext, body, AstOptimizationStep.FindLoops);
 
                 final int lambdaId = _lambdaCount.increment().getValue();
                 final Set<Label> renamedLabels = new HashSet<>();
