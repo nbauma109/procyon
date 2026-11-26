@@ -195,6 +195,33 @@ public class GenericsTests extends DecompilerTest {
     }
 
     @Test
+    public void testNoExplicitTypeArgumentsForAWidenedArgument() {
+        verifyOutput(
+            BoundOverloads.class,
+            createSettings(OPTION_EXPLICIT_TYPE_ARGUMENTS),
+            "class BoundOverloads {\n" +
+            "    <B extends Appendable> B append(final B buffer) {\n" +
+            "        return buffer;\n" +
+            "    }\n" +
+            "    StringBuffer append(final StringBuffer buffer) {\n" +
+            "        return (StringBuffer)this.append((Appendable)buffer);\n" +
+            "    }\n" +
+            "    <T> void accept(final T value) {\n" +
+            "    }\n" +
+            "    void accept(final String value) {\n" +
+            "        this.accept((Object)value);\n" +
+            "    }\n" +
+            "    <T extends Comparable<T>> T take(final T value) {\n" +
+            "        return value;\n" +
+            "    }\n" +
+            "    String take(final String value) {\n" +
+            "        return (String)this.take((Comparable)value);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
     public void testCastToTheBoundWhichSelectsTheGenericOverload() {
         verifyOutput(
             BoundOverloads.class,
@@ -210,6 +237,12 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void accept(final String value) {\n" +
             "        this.accept((Object)value);\n" +
+            "    }\n" +
+            "    <T extends Comparable<T>> T take(final T value) {\n" +
+            "        return value;\n" +
+            "    }\n" +
+            "    String take(final String value) {\n" +
+            "        return (String)this.take((Comparable)value);\n" +
             "    }\n" +
             "}\n"
         );
@@ -318,5 +351,14 @@ class BoundOverloads {
 
     void accept(final String value) {
         accept((Object) value);
+    }
+
+    <T extends Comparable<T>> T take(final T value) {
+        return value;
+    }
+
+    @SuppressWarnings("unchecked")
+    String take(final String value) {
+        return (String) take((Comparable) value);
     }
 }

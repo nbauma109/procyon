@@ -1202,10 +1202,15 @@ public class AstMethodBodyBuilder {
             );
         }
         else {
+            final List<Expression> adjustedArguments = adjustArgumentsForMethodCall(methodReference, arguments);
+
+            // The type arguments inferred from the arguments do not hold for a widened argument.
+            final boolean widened = any(adjustedArguments, a -> a.getUserData(Keys.SELECTS_OVERLOAD) != null);
+
             invocation = target.invoke(
                 methodReference.getName(),
-                convertTypeArguments(methodReference),
-                adjustArgumentsForMethodCall(methodReference, arguments)
+                widened ? Collections.<AstType>emptyList() : convertTypeArguments(methodReference),
+                adjustedArguments
             );
 
             if (target.isNull()) {
@@ -1543,7 +1548,8 @@ public class AstMethodBodyBuilder {
                 !other.isGenericParameter() &&
                 MetadataHelper.isAssignableFrom(MetadataHelper.erase(other), argumentType)) {
 
-                return MetadataHelper.getUpperBound(declared);
+                // Erased, as the bound may mention type variables which cannot be named here either.
+                return MetadataHelper.erase(MetadataHelper.getUpperBound(declared));
             }
         }
 
