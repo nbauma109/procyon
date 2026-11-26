@@ -9,7 +9,7 @@
   },
   "commons-collections": {
     "repo": "https://github.com/apache/commons-collections",
-    "ref": "rel/commons-collections-4.4"
+    "ref": "commons-commons-collections-4.4"
   },
   "commons-text": {
     "repo": "https://github.com/apache/commons-text",

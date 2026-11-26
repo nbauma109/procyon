@@ -77,6 +77,15 @@ def run(command, cwd=None, log=None, timeout=None):
     return code, output
 
 
+def read_json(path):
+    """Returns the parsed content of a JSON file, or None if it is missing or invalid."""
+    try:
+        with open(path, encoding="utf-8") as stream:
+            return json.load(stream)
+    except (OSError, ValueError):
+        return None
+
+
 def kill_group(process):
     if hasattr(os, "killpg"):
         try:
@@ -262,12 +271,23 @@ class Project:
         return run(command, cwd=self.module, log=self.log(log), timeout=timeout)
 
     def checkout(self):
-        if not os.path.isdir(self.source):
-            self.step("cloning %s at %s" % (self.config["repo"], self.config["ref"]))
-            code, output = run(["git", "clone", "--quiet", "--depth", "1", "--branch", self.config["ref"],
-                                self.config["repo"], self.source], log=self.log("clone"))
-            if code != 0:
-                raise PipelineError("clone failed:\n" + output)
+        """Clones the configured revision, unless it is what a previous run already cloned."""
+        wanted = {"repo": self.config["repo"], "ref": self.config["ref"]}
+        marker = os.path.join(self.work, "checkout.json")
+        if os.path.isdir(self.source):
+            if read_json(marker) == wanted:
+                return
+            self.step("discarding the checkout of another revision")
+            shutil.rmtree(self.source)
+        if os.path.exists(marker):
+            os.remove(marker)
+        self.step("cloning %s at %s" % (wanted["repo"], wanted["ref"]))
+        code, output = run(["git", "clone", "--quiet", "--depth", "1", "--branch", wanted["ref"],
+                            wanted["repo"], self.source], log=self.log("clone"))
+        if code != 0:
+            raise PipelineError("clone failed:\n" + output)
+        with open(marker, "w", encoding="utf-8") as stream:
+            json.dump(wanted, stream)
 
     def build(self):
         self.step("building the original project")
@@ -287,14 +307,25 @@ class Project:
         shutil.copytree(directory, self.classes)
 
     def test(self, log, only=None):
-        """Runs the tests against whatever is in target/classes, without rebuilding it."""
+        """Runs the tests against whatever is in target/classes, without rebuilding it.
+
+        Returns (completed, results). Test failures do not count against completion,
+        but a timeout or a broken build does: its results are then partial.
+        """
         if os.path.exists(self.reports):
             shutil.rmtree(self.reports)
         goals = ["test", "-Dmaven.main.skip=true", "-Dmaven.test.failure.ignore=true"]
         if only:
             goals += ["-Dtest=" + only, "-DfailIfZeroTests=false", "-Dsurefire.failIfNoSpecifiedTests=false"]
-        self.maven(goals, log, timeout=self.options.test_timeout)
-        return parse_surefire_reports(self.reports)
+        code, _ = self.maven(goals, log, timeout=self.options.test_timeout)
+        return code == 0, parse_surefire_reports(self.reports)
+
+    def baseline(self):
+        self.step("running the baseline tests")
+        completed, results = self.test("test-baseline")
+        if not completed or not results:
+            raise PipelineError("the baseline tests did not complete, see " + self.log("test-baseline"))
+        return results
 
     def decompile(self, units):
         self.step("decompiling %d compilation units" % len(units))
@@ -330,6 +361,9 @@ class Project:
         if code != 0:
             message, category = classify_javac_output(output)
             result = {"status": "compile-error", "message": message, "category": category, "output": output}
+        elif not os.path.isfile(os.path.join(destination, unit + ".class")):
+            # For instance the empty file left behind when the decompiler crashes.
+            result = {"status": "decompile-error", "message": "the source does not declare the class"}
         else:
             result = {"status": "recompiled", "directory": destination}
         if incomplete:
@@ -349,12 +383,7 @@ class Project:
         self.build()
         units = group_units(list_classes(self.original))
 
-        baseline = {}
-        if not self.options.skip_tests:
-            self.step("running the baseline tests")
-            baseline = self.test("test-baseline")
-            if not baseline:
-                raise PipelineError("no baseline test results, see " + self.log("test-baseline"))
+        baseline = {} if self.options.skip_tests else self.baseline()
 
         results = self.recompile(units, self.decompile(units))
         compiled = {unit: result["directory"] for unit, result in results.items()
@@ -384,9 +413,10 @@ class Project:
 
         try:
             self.step("running the tests on the recompiled classes")
-            current = tests_with(sorted(compiled), "test-recompiled")
+            completed, current = tests_with(sorted(compiled), "test-recompiled")
             broken = regressions(baseline, current)
             report["tests"] = {
+                "completed": completed,
                 "baseline_passed": sum(1 for status in baseline.values() if status == "passed"),
                 "regressions": broken,
             }
@@ -396,7 +426,7 @@ class Project:
                 only = test_filter(broken)
 
                 def fails(selected):
-                    outcome = tests_with(selected, "test-bisect", only)
+                    outcome = tests_with(selected, "test-bisect", only)[1]
                     return any(outcome.get(test) != "passed" for test in broken)
 
                 report["tests"]["culprits"] = find_culprits(sorted(compiled), fails)
@@ -428,6 +458,8 @@ def render_markdown(reports):
         for unit in report["incomplete"]:
             lines.append("- `%s` has methods which could not be decompiled" % unit)
         tests = report.get("tests", {})
+        if tests and not tests.get("completed", True):
+            lines.append("- the tests of the recompiled classes did not complete")
         for culprit in tests.get("culprits", []):
             lines.append("- behaviour change in `%s`" % culprit)
         for test in tests.get("regressions", [])[:50]:

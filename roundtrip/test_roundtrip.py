@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -123,6 +124,65 @@ class ProcessTests(unittest.TestCase):
         code, output = roundtrip.run([sys.executable, "-c", script], timeout=2)
         self.assertEqual(-1, code)
         self.assertIn("timed out", output)
+
+
+class ProjectTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.directory = directory.name
+        options = roundtrip.parse_arguments(["--work-dir", self.directory])
+        self.config = {"repo": "https://example.invalid/p", "ref": "v1"}
+        self.project = roundtrip.Project("p", self.config, options)
+        os.makedirs(self.project.logs)
+
+    def test_reclones_only_when_the_configured_revision_changes(self):
+        clones = []
+
+        def clone(command, **_):
+            clones.append(command)
+            os.makedirs(command[-1])
+            return 0, ""
+
+        with mock.patch.object(roundtrip, "run", clone):
+            self.project.checkout()
+            self.project.checkout()
+            self.assertEqual(1, len(clones))
+            write(os.path.join(self.project.source, "stale.txt"))
+            self.config["ref"] = "v2"
+            self.project.checkout()
+        self.assertEqual(2, len(clones))
+        self.assertIn("v2", clones[-1])
+        self.assertFalse(os.path.exists(os.path.join(self.project.source, "stale.txt")))
+
+    def test_forgets_the_checkout_when_cloning_fails(self):
+        with mock.patch.object(roundtrip, "run", lambda *_, **__: (128, "no such tag")):
+            with self.assertRaises(roundtrip.PipelineError):
+                self.project.checkout()
+        self.assertIsNone(roundtrip.read_json(os.path.join(self.project.work, "checkout.json")))
+
+    def test_rejects_an_interrupted_or_empty_baseline(self):
+        for outcome in ((False, {"a.T#x": "passed"}), (True, {})):
+            with mock.patch.object(self.project, "test", lambda *_: outcome):
+                with self.assertRaises(roundtrip.PipelineError):
+                    self.project.baseline()
+        with mock.patch.object(self.project, "test", lambda *_: (True, {"a.T#x": "failed"})):
+            self.assertEqual({"a.T#x": "failed"}, self.project.baseline())
+
+    def test_requires_the_recompiled_class_file(self):
+        write(os.path.join(self.project.original, "a/B.class"), b"\xca\xfe\xba\xbe\x00\x00\x00\x34")
+        decompiled = os.path.join(self.directory, "decompiled")
+        write(os.path.join(decompiled, "a/B.java"))
+        self.project.dependencies = []
+        with mock.patch.object(roundtrip, "run", lambda *_, **__: (0, "")):
+            self.assertEqual("decompile-error", self.project.recompile_unit("a/B", decompiled)["status"])
+
+        def compile_class(command, **_):
+            write(os.path.join(command[command.index("-d") + 1], "a/B.class"))
+            return 0, ""
+
+        with mock.patch.object(roundtrip, "run", compile_class):
+            self.assertEqual("recompiled", self.project.recompile_unit("a/B", decompiled)["status"])
 
 
 class ReportingTests(unittest.TestCase):
