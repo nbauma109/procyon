@@ -334,7 +334,11 @@ public class MinMaxLineNumberVisitor extends DepthFirstAstVisitor<Void, Void> {
     @Override
     public Void visitAnonymousObjectCreationExpression(AnonymousObjectCreationExpression node, Void data) {
         updateMinMaxLineNumbers(node.getOffset());
-        return super.visitAnonymousObjectCreationExpression(node, data);
+        // The class body is not visited: see visitLambdaExpression.
+        for (Expression argument : node.getArguments()) {
+            argument.acceptVisitor(this, data);
+        }
+        return null;
     }
 
     @Override
@@ -352,7 +356,9 @@ public class MinMaxLineNumberVisitor extends DepthFirstAstVisitor<Void, Void> {
     @Override
     public Void visitLambdaExpression(LambdaExpression node, Void data) {
         updateMinMaxLineNumbers(node.getOffset());
-        return super.visitLambdaExpression(node, data);
+        // The offsets within the body belong to another method: looked up in the line number table of
+        // this one, they would yield unrelated lines.
+        return null;
     }
 
     @Override
