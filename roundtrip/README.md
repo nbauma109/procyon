@@ -37,6 +37,14 @@ Results are written to `build/roundtrip/`: `report.md` for the run, and for each
 `report.json` (with the complete `javac` output of every failure), `decompiled/` sources
 and `logs/`.
 
+## Continuous integration
+
+The `Decompiler round trip` workflow runs on every pull request and push to `master`. It
+builds the decompiler once, then runs one job per project of `projects.json`, in parallel,
+without bisection. Each job publishes its report in the job summary and as an artifact.
+A job fails when its pipeline cannot complete (clone, build or baseline tests);
+recompilation failures and test regressions are reported without failing it.
+
 ## Adding a project
 
 Add an entry to `projects.json` with `repo`, `ref` (a tag or branch), and optionally

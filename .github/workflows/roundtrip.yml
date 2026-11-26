@@ -1,27 +1,24 @@
 name: Decompiler round trip
 
 on:
+  push:
+    branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
-    paths:
-      - "roundtrip/**"
-      - ".github/workflows/roundtrip.yml"
-  schedule:
-    - cron: "17 3 * * 1"
-  workflow_dispatch:
-    inputs:
-      projects:
-        description: "Optional. Space-separated project names from roundtrip/projects.json (default: all)."
-        required: false
-        default: ""
 
 permissions:
   contents: read
 
+concurrency:
+  group: roundtrip-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  round-trip:
+  decompiler:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 15
+    outputs:
+      projects: ${{ steps.projects.outputs.names }}
 
     steps:
       - name: Checkout
@@ -37,18 +34,62 @@ jobs:
       - name: Test the pipeline
         run: python3 -m unittest discover -s roundtrip -v
 
+      - name: List the projects
+        id: projects
+        run: echo "names=$(jq -c 'keys' roundtrip/projects.json)" >> "${GITHUB_OUTPUT}"
+
       - name: Build the decompiler
         run: |
           chmod +x ./gradlew
           ./gradlew --no-daemon :Procyon.Decompiler:jar
 
+      - name: Share the decompiler
+        uses: actions/upload-artifact@v4
+        with:
+          name: decompiler
+          path: build/Procyon.Decompiler/libs/procyon-decompiler-*.jar
+          if-no-files-found: error
+
+  # One job per project of roundtrip/projects.json, all running in parallel.
+  round-trip:
+    needs: decompiler
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJSON(needs.decompiler.outputs.projects) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "8"
+
+      - name: Cache the project dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: roundtrip-m2-${{ matrix.project }}-${{ hashFiles('roundtrip/projects.json') }}
+          restore-keys: roundtrip-m2-${{ matrix.project }}-
+
+      - name: Fetch the decompiler
+        uses: actions/download-artifact@v4
+        with:
+          name: decompiler
+          path: decompiler
+
       - name: Run the round trip
         env:
-          # Pull requests only run one small project, as a smoke test of the pipeline.
-          PROJECTS: ${{ github.event_name == 'pull_request' && 'commons-codec' || github.event.inputs.projects }}
+          PROJECT: ${{ matrix.project }}
         run: |
-          read -r -a projects <<< "${PROJECTS}"
-          python3 roundtrip/roundtrip.py "${projects[@]}"
+          jar="$(find decompiler -name 'procyon-decompiler-*.jar' | head -n 1)"
+          # Bisection takes hours on projects with many regressions: run it locally.
+          python3 roundtrip/roundtrip.py "${PROJECT}" --jar "${jar}" --no-bisect --test-timeout 900
 
       - name: Summarize
         if: always()
@@ -61,7 +102,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: roundtrip-reports
+          name: roundtrip-${{ matrix.project }}
           path: |
             build/roundtrip/report.md
             build/roundtrip/*/report.json
