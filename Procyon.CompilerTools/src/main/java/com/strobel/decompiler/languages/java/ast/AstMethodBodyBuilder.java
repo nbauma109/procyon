@@ -1218,54 +1218,54 @@ public class AstMethodBodyBuilder {
     @SuppressWarnings("UnusedParameters")
     private List<Expression> adjustArgumentsForMethodCall(final MethodReference method, final List<Expression> arguments) {
         if (!arguments.isEmpty() && method.isConstructor()) {
-            final TypeReference declaringType = method.getDeclaringType();
+            final TypeDefinition resolvedType = method.getDeclaringType().resolve();
 
-            if (declaringType.isNested()) {
-                final TypeDefinition resolvedType = declaringType.resolve();
+            if (resolvedType != null && !resolvedType.isEnum()) {
+                if (resolvedType.isLocalClass()) {
+                    return arguments;
+                }
 
-                if (resolvedType != null && !resolvedType.isEnum()) {
-                    if (resolvedType.isLocalClass()) {
-                        return arguments;
-                    }
+                final MethodDefinition resolvedMethod = method.resolve();
 
-                    if (resolvedType.isInnerClass()) {
-                        final MethodDefinition resolvedMethod = method.resolve();
+                if (resolvedMethod != null &&
+                    resolvedMethod.isSynthetic() &&
+                    (resolvedMethod.getFlags() & Flags.AccessFlags) == 0) {
 
-                        if (resolvedMethod != null &&
-                            resolvedMethod.isSynthetic() &&
-                            (resolvedMethod.getFlags() & Flags.AccessFlags) == 0) {
+                    //
+                    // This is an accessor which lets other classes of the nest call a private constructor.
+                    // The constructor may belong to a nested class or to the top-level class itself.
+                    //
 
-                            final List<ParameterDefinition> parameters = resolvedMethod.getParameters();
+                    final List<ParameterDefinition> parameters = resolvedMethod.getParameters();
 
-                            int start = 0;
-                            int end = arguments.size();
+                    int start = 0;
+                    int end = arguments.size();
 
-                            for (int i = parameters.size() - 1; i >= 0; i--) {
-                                final TypeReference parameterType = parameters.get(i).getParameterType();
-                                final TypeDefinition resolvedParameterType = parameterType.resolve();
+                    for (int i = parameters.size() - 1; i >= 0; i--) {
+                        final TypeReference parameterType = parameters.get(i).getParameterType();
+                        final TypeDefinition resolvedParameterType = parameterType.resolve();
 
-                                if (resolvedParameterType != null && resolvedParameterType.isAnonymous()) {
-                                    --end;
-                                }
-                                else {
-                                    break;
-                                }
-                            }
-
-                            if (!resolvedType.isStatic() && !_context.getSettings().getShowSyntheticMembers()) {
-                                ++start;
-                            }
-
-                            if (start > end) {
-                                return Collections.emptyList();
-                            }
-
-                            return adjustArgumentsForMethodCallCore(
-                                method.getParameters().subList(start, end),
-                                arguments.subList(start, end)
-                            );
+                        if (resolvedParameterType != null && resolvedParameterType.isAnonymous()) {
+                            --end;
+                        }
+                        else {
+                            break;
                         }
                     }
+
+                    if (resolvedType.isNested() &&
+                        !resolvedType.isStatic() &&
+                        !_context.getSettings().getShowSyntheticMembers()) {
+
+                        ++start;
+                    }
+
+                    start = Math.min(start, end);
+
+                    return adjustArgumentsForMethodCallCore(
+                        method.getParameters().subList(start, end),
+                        arguments.subList(start, end)
+                    );
                 }
             }
         }
