@@ -99,6 +99,11 @@ public class GenericsTests extends DecompilerTest {
                 "    Whole whole(Whole w) { return w; }",
                 "    static class Counted2<X> { X get() { return null; } }",
                 "    static class Whole extends Counted2<Integer> { }",
+                "    interface Strings { String[] get(); }",
+                "    Strings fixed(Several s) {",
+                "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
+                "        return f::all;",
+                "    }",
                 "    java.util.function.Supplier<String[]> arrays(Several s) {",
                 "        Many<String> m = (Many<String>) (Many) many((Many<?>) s);",
                 "        return m::all;",
@@ -209,6 +214,9 @@ public class GenericsTests extends DecompilerTest {
             "    Whole whole(final Whole whole) {\n" +
             "        return whole;\n" +
             "    }\n" +
+            "    Strings fixed(final Several several) {\n" +
+            "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
+            "    }\n" +
             "    Supplier<String[]> arrays(final Several several) {\n" +
             "        return (Supplier)this.many((Many)several)::all;\n" +
             "    }\n" +
@@ -231,6 +239,9 @@ public class GenericsTests extends DecompilerTest {
             "    int element(final String s) {\n" +
             "        final CharSequence s2 = this.array((CharSequence)s)[0];\n" +
             "        return s2.length() + s2.charAt(0);\n" +
+            "    }\n" +
+            "    interface Strings {\n" +
+            "        String[] get();\n" +
             "    }\n" +
             "    static class Whole extends Counted2<Integer> {\n" +
             "    }\n" +
@@ -1098,6 +1109,9 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void act(final Risk risk) throws IOException {\n" +
             "        ((Hazard<IOException>)(Hazard)this.hazard((Hazard)risk)).act();\n" +
+            "    }\n" +
+            "    void passed(final Risk risk, final IOException e) throws IOException {\n" +
+            "        ((Hazard<IOException>)(Hazard)this.hazard((Hazard)risk)).rethrow(e);\n" +
             "    }\n" +
             "    void caught(final Risk risk) {\n" +
             "        try {\n" +
@@ -2174,6 +2188,10 @@ class Writes {
         ((Hazard<IOException>) (Hazard) this.hazard((Hazard<?>) risk)).act();
     }
 
+    void passed(final Risk risk, final IOException e) throws IOException {
+        ((Hazard<IOException>) (Hazard) this.hazard((Hazard<?>) risk)).rethrow(e);
+    }
+
     void caught(final Risk risk) {
         try {
             ((Hazard<IOException>) (Hazard) this.hazard((Hazard<?>) risk)).act();
@@ -2187,6 +2205,8 @@ class Writes {
 @SuppressWarnings("unused") // decompiler fixture
 abstract class Hazard<X extends Exception> {
     abstract void act() throws X;
+
+    abstract void rethrow(X cause) throws X;
 }
 
 @SuppressWarnings("unused") // decompiler fixture

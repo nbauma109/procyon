@@ -856,7 +856,10 @@ public class AstMethodBodyBuilder {
                             specializeReceiver(
                                 methodGroup,
                                 declaringType,
-                                MetadataHelper.getBoxedTypeOrSelf(((IMethodSignature) implemented).getReturnType())
+                                resultTypeArgument(
+                                    declaredType(targetMethod),
+                                    ((IMethodSignature) implemented).getReturnType()
+                                )
                             )) {
 
                             return methodGroup;
@@ -1253,20 +1256,22 @@ public class AstMethodBodyBuilder {
 
             widenedReceiver = isWidened(receiver);
 
-            if (widenedReceiver && takesClassTypeVariables(methodReference)) {
+            // A widened receiver would throw the bound of its type variable.
+            final TypeReference thrown = widenedReceiver ? thrownTypeArgument(methodReference, byteCode.getOffset())
+                                                         : null;
+            final boolean takesVariables = widenedReceiver && takesClassTypeVariables(methodReference);
+
+            if (takesVariables && thrown == null) {
                 // Only a raw receiver still takes the arguments typed as before the widening.
                 target = rawReceiver(receiver, declaringType);
             }
             else {
-                target = discardResultCast(receiver);
+                final Expression discarded = discardResultCast(receiver);
 
-                if (widenedReceiver) {
-                    // A widened receiver would throw the bound of its type variable.
-                    final TypeReference thrown = thrownTypeArgument(methodReference, byteCode.getOffset());
+                target = thrown != null ? specializedReceiver(discarded, declaringType, thrown) : discarded;
 
-                    if (thrown != null) {
-                        target = specializedReceiver(target, declaringType, thrown);
-                    }
+                if (takesVariables && target == discarded) {
+                    target = rawReceiver(discarded, declaringType);
                 }
             }
 
@@ -1669,6 +1674,22 @@ public class AstMethodBodyBuilder {
         }
 
         return bounds;
+    }
+
+    /**
+     * Returns the type for which the type variable of a result stands, given the type of that result,
+     * which may be an array of it.
+     */
+    private static TypeReference resultTypeArgument(final TypeReference declared, final TypeReference result) {
+        TypeReference variable = declared;
+        TypeReference argument = result;
+
+        while (variable.isArray() && argument.isArray()) {
+            variable = variable.getElementType();
+            argument = argument.getElementType();
+        }
+
+        return MetadataHelper.getBoxedTypeOrSelf(argument);
     }
 
     private boolean specializeReceiver(
