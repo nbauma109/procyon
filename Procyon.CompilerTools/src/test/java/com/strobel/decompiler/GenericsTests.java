@@ -66,6 +66,14 @@ public class GenericsTests extends DecompilerTest {
                 "        CharSequence c = both((CharSequence & java.io.Serializable) s);",
                 "        return c.length() + c.charAt(0);",
                 "    }",
+                "    static class Keyed<X> { X get(String key) { return null; } }",
+                "    static class Fixed extends Keyed<String> { }",
+                "    <T extends Keyed<?>> T keyed(T t) { return t; }",
+                "    Fixed keyed(Fixed f) { return f; }",
+                "    java.util.function.Function<String, String> applied(Fixed f) {",
+                "        Keyed<String> k = (Keyed<String>) (Keyed) keyed((Keyed<?>) f);",
+                "        return k::get;",
+                "    }",
                 "    java.util.function.Supplier<String> supplied(Child c) {",
                 "        Box<String> b = (Box<String>) (Box) pick((Box<?>) c);",
                 "        return b::get;",
@@ -136,6 +144,15 @@ public class GenericsTests extends DecompilerTest {
             "        final CharSequence both = this.both((CharSequence & Serializable)s);\n" +
             "        return both.length() + both.charAt(0);\n" +
             "    }\n" +
+            "    <T extends Keyed<?>> T keyed(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Fixed keyed(final Fixed fixed) {\n" +
+            "        return fixed;\n" +
+            "    }\n" +
+            "    Function<String, String> applied(final Fixed fixed) {\n" +
+            "        return (Function)(Function<String, Object>)this.keyed((Keyed)fixed)::get;\n" +
+            "    }\n" +
             "    Supplier<String> supplied(final Child child) {\n" +
             "        return (Supplier)this.pick((Box)child)::get;\n" +
             "    }\n" +
@@ -155,6 +172,13 @@ public class GenericsTests extends DecompilerTest {
             "    int element(final String s) {\n" +
             "        final CharSequence s2 = this.array((CharSequence)s)[0];\n" +
             "        return s2.length() + s2.charAt(0);\n" +
+            "    }\n" +
+            "    static class Fixed extends Keyed<String> {\n" +
+            "    }\n" +
+            "    static class Keyed<X> {\n" +
+            "        X get(final String s) {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    static class Child extends Box<String> {\n" +
             "    }\n" +
@@ -921,6 +945,32 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void compatible(final String s, final Map<Object, Integer> map) {\n" +
             "        this.put((CharSequence)s, map);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testWildcardVariableBoundsAndMembersTakingClassVariables() {
+        verifyOutput(
+            Inputs.class,
+            defaultSettings(),
+            "class Inputs {\n" +
+            "    <E extends Number> void toss(final E e, final List<String> list) {\n" +
+            "    }\n" +
+            "    <N extends Number> void toss(final Integer e, final Collection<? extends N> list) {\n" +
+            "    }\n" +
+            "    <T extends CharSequence> List<T> wrap(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<String> wrap(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    void wildcard(final Integer n, final List<String> list) {\n" +
+            "        this.toss(n, list);\n" +
+            "    }\n" +
+            "    boolean member(final String s, final List<String> list) {\n" +
+            "        return ((List)this.wrap((CharSequence)s)).addAll(list);\n" +
             "    }\n" +
             "}\n"
         );
@@ -1913,6 +1963,31 @@ class Shared {
 
     void compatible(final String s, final Map<Object, Integer> map) {
         this.put((CharSequence) s, map);
+    }
+}
+
+@SuppressWarnings({ "unused", "unchecked" }) // decompiler fixture
+class Inputs {
+    <E extends Number> void toss(final E e, final List<String> list) {
+    }
+
+    <N extends Number> void toss(final Integer e, final Collection<? extends N> list) {
+    }
+
+    <T extends CharSequence> List<T> wrap(final T t) {
+        return null;
+    }
+
+    List<String> wrap(final String s) {
+        return null;
+    }
+
+    void wildcard(final Integer n, final List<String> list) {
+        this.toss(n, list);
+    }
+
+    boolean member(final String s, final List<String> list) {
+        return ((List<String>) (List) this.wrap((CharSequence) s)).addAll(list);
     }
 }
 

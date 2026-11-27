@@ -830,13 +830,7 @@ public class AstMethodBodyBuilder {
                         returned.isGenericParameter() &&
                         byteCode.getInferredType() instanceof IGenericInstance) {
 
-                        final CastExpression cast = new CastExpression(
-                            _astBuilder.convertType(MetadataHelper.erase(byteCode.getInferredType())),
-                            methodGroup
-                        );
-
-                        cast.putUserData(Keys.RESULT_CAST, true);
-                        return cast;
+                        return adaptReturnType(methodGroup, targetMethod, (IGenericInstance) byteCode.getInferredType());
                     }
 
                     return methodGroup;
@@ -1216,7 +1210,14 @@ public class AstMethodBodyBuilder {
             final Expression receiver = arguments.remove(0);
 
             widenedReceiver = isWidened(receiver);
-            target = discardResultCast(receiver);
+
+            if (widenedReceiver && takesClassTypeVariables(methodReference)) {
+                // Only a raw receiver still takes the arguments typed as before the widening.
+                target = rawReceiver(receiver, declaringType);
+            }
+            else {
+                target = discardResultCast(receiver);
+            }
 
             if (target instanceof NullReferenceExpression) {
                 target = new CastExpression(_astBuilder.convertType(declaringType), target);
@@ -1615,6 +1616,93 @@ public class AstMethodBodyBuilder {
         }
 
         return bounds;
+    }
+
+    /**
+     * Casts a method reference to its raw functional interface, whose result accepts any type.  Where
+     * the method takes arguments, their types are first kept by naming only the result type as Object.
+     */
+    private Expression adaptReturnType(
+        final MethodGroupExpression methodGroup,
+        final MethodReference method,
+        final IGenericInstance functionType) {
+
+        final TypeReference type = (TypeReference) functionType;
+        final TypeReference accepting = method.getParameters().isEmpty() ? null : withObjectResult(type);
+
+        Expression value = methodGroup;
+
+        if (accepting != null) {
+            final CastExpression cast = new CastExpression(_astBuilder.convertType(accepting), value);
+
+            cast.putUserData(Keys.RESULT_CAST, true);
+            value = cast;
+        }
+
+        final CastExpression cast = new CastExpression(_astBuilder.convertType(MetadataHelper.erase(type)), value);
+
+        cast.putUserData(Keys.RESULT_CAST, true);
+        return cast;
+    }
+
+    /**
+     * Returns a functional interface with the type argument of its result replaced by Object, or
+     * {@code null} if its result is not declared as one of its type variables.
+     */
+    private static TypeReference withObjectResult(final TypeReference type) {
+        final TypeDefinition definition = type.resolve();
+
+        if (definition == null) {
+            return null;
+        }
+
+        final List<TypeReference> arguments = new ArrayList<>(((IGenericInstance) type).getTypeArguments());
+        final List<GenericParameter> variables = definition.getGenericParameters();
+
+        for (final MethodDefinition method : definition.getDeclaredMethods()) {
+            final TypeReference returned = method.getReturnType();
+
+            if (!method.isAbstract() || !returned.isGenericParameter()) {
+                continue;
+            }
+
+            for (int i = 0; i < variables.size() && i < arguments.size(); i++) {
+                if (variables.get(i).getSimpleName().equals(returned.getSimpleName())) {
+                    arguments.set(i, BuiltinTypes.Object);
+                    return definition.makeGenericType(arguments);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private Expression rawReceiver(final Expression receiver, final TypeReference declaringType) {
+        if (receiver.getUserData(Keys.RESULT_CAST) != null) {
+            receiver.putUserData(Keys.WIDENED_BOUNDS, Collections.<TypeReference>emptyList());
+            return receiver;
+        }
+
+        final CastExpression cast = new CastExpression(
+            _astBuilder.convertType(MetadataHelper.erase(declaringType)),
+            receiver
+        );
+
+        cast.putUserData(Keys.RESULT_CAST, true);
+        cast.putUserData(Keys.WIDENED_BOUNDS, Collections.<TypeReference>emptyList());
+        return cast;
+    }
+
+    /** Tells whether the parameters of a method depend on the type variables of its class. */
+    private static boolean takesClassTypeVariables(final MethodReference method) {
+        final MethodDefinition definition = method.resolve();
+
+        return definition != null &&
+               any(
+                   definition.getDeclaringType().getGenericParameters(),
+                   variable -> any(definition.getParameters(),
+                                   p -> mentions(p.getParameterType(), variable.getSimpleName()))
+               );
     }
 
     /** Marks an expression accessing a value whose type depends on a widened argument. */
@@ -2426,6 +2514,17 @@ public class AstMethodBodyBuilder {
 
         for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
             final TypeReference target = targets.get(i);
+
+            if (target.isWildcardType() && target.hasExtendsBound() && target.getExtendsBound().isGenericParameter()) {
+                final TypeReference source = sources.get(i);
+                final TypeReference upper = !source.isWildcardType() ? source
+                                                                     : source.hasExtendsBound() ? source.getExtendsBound()
+                                                                                                : null;
+
+                if (upper == null || !accepts(target.getExtendsBound(), upper)) {
+                    return false;
+                }
+            }
 
             // Of a type variable only the bounds are checked; other types which depend on one are left
             // to the inference of the compiler.
