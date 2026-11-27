@@ -55,6 +55,14 @@ public class GenericsTests extends DecompilerTest {
                 "        CharSequence[] c = array((CharSequence) s);",
                 "        return c.length + c[0].length();",
                 "    }",
+                "    static class Box<X> { X get() { return null; } }",
+                "    static class Child extends Box<String> { }",
+                "    <T extends Box<?>> T pick(T t) { return t; }",
+                "    Child pick(Child c) { return c; }",
+                "    String member(Child c) {",
+                "        Box<?> b = pick((Box<?>) c);",
+                "        return ((String) b.get()).substring(1) + b.hashCode();",
+                "    }",
                 "    int element(String s) {",
                 "        CharSequence c = array((CharSequence) s)[0];",
                 "        return c.length() + c.charAt(0);",
@@ -92,9 +100,26 @@ public class GenericsTests extends DecompilerTest {
             "        final CharSequence[] array = this.array((CharSequence)s);\n" +
             "        return array.length + array[0].length();\n" +
             "    }\n" +
+            "    <T extends Box<?>> T pick(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Child pick(final Child child) {\n" +
+            "        return child;\n" +
+            "    }\n" +
+            "    String member(final Child child) {\n" +
+            "        final Box pick = this.pick((Box)child);\n" +
+            "        return ((String)pick.get()).substring(1) + pick.hashCode();\n" +
+            "    }\n" +
             "    int element(final String s) {\n" +
             "        final CharSequence s2 = this.array((CharSequence)s)[0];\n" +
             "        return s2.length() + s2.charAt(0);\n" +
+            "    }\n" +
+            "    static class Child extends Box<String> {\n" +
+            "    }\n" +
+            "    static class Box<X> {\n" +
+            "        X get() {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "}\n"
         );
@@ -710,6 +735,26 @@ public class GenericsTests extends DecompilerTest {
             "    void direct(final Integer n, final List<? extends Number> list, final IOException e, final String s) throws IOException {\n" +
             "        this.bounded(n, list);\n" +
             "        this.toss(e, (Object)s);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testBoundedCandidatesAndInaccessibleGenericSupertypes() {
+        verifyOutput(
+            Shadows.class,
+            defaultSettings(),
+            "class Shadows {\n" +
+            "    <E extends Number> void toss(final E e, final String s) {\n" +
+            "    }\n" +
+            "    <N extends Number> void toss(final Integer e, final N n) {\n" +
+            "    }\n" +
+            "    List<String> shaded(final String s) {\n" +
+            "        return (ArrayList)OverloadsElsewhere.shaded((CharSequence)s);\n" +
+            "    }\n" +
+            "    void direct(final Integer n) {\n" +
+            "        this.toss(n, \"x\");\n" +
             "    }\n" +
             "}\n"
         );
@@ -1561,6 +1606,23 @@ class Coordinated {
     void direct(final Integer n, final List<? extends Number> list, final IOException e, final String s) throws IOException {
         this.bounded(n, list);
         this.toss(e, (Object) s);
+    }
+}
+
+@SuppressWarnings({ "unused", "unchecked" }) // decompiler fixture
+class Shadows {
+    <E extends Number> void toss(final E e, final String s) {
+    }
+
+    <N extends Number> void toss(final Integer e, final N n) {
+    }
+
+    List<String> shaded(final String s) {
+        return (List) OverloadsElsewhere.shaded((CharSequence) s);
+    }
+
+    void direct(final Integer n) {
+        this.toss(n, "x");
     }
 }
 

@@ -21,6 +21,14 @@ public class OverloadsElsewhere {
     protected void send(final String s) {
     }
 
+    public static <C extends CharSequence> Shaded<C> shaded(final C c) {
+        return null;
+    }
+
+    public static Shaded<String> shaded(final String s) {
+        return null;
+    }
+
     public static class Parent extends Hidden<String> {
     }
 
@@ -43,4 +51,9 @@ public class OverloadsElsewhere {
 }
 
 class Hidden<T> {
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class Shaded<T> extends java.util.ArrayList<T> {
+    private static final long serialVersionUID = 1L;
 }

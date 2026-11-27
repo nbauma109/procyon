@@ -51,6 +51,7 @@ public class AstMethodBodyBuilder {
     private final DecompilerContext _context;
     private final Set<Variable> _localVariablesToDefine = new LinkedHashSet<>();
     private final Set<Variable> _widenedVariables = new HashSet<>();
+    private final Map<Variable, List<TypeReference>> _widenedLocals = new HashMap<>();
 
     private final static INode LAMBDA_BODY_PATTERN;
     private final static INode EMPTY_LAMBDA_BODY_PATTERN;
@@ -887,6 +888,14 @@ public class AstMethodBodyBuilder {
                 final IdentifierExpression name = new IdentifierExpression( byteCode.getOffset(),
                         variableOperand.getName());
                 name.putUserData(Keys.VARIABLE, variableOperand);
+
+                final List<TypeReference> bounds = _widenedLocals.get(variableOperand);
+
+                if (bounds != null) {
+                    name.putUserData(Keys.WIDENED_RECEIVER, true);
+                    name.putUserData(Keys.WIDENED_BOUNDS, bounds);
+                }
+
                 return name;
             }
 
@@ -1305,12 +1314,23 @@ public class AstMethodBodyBuilder {
             element = element.getElementType();
         }
 
-        // A type which cannot be named here can only be consumed as one of its supertypes.
-        if (element instanceof IGenericInstance &&
-            element.containsGenericParameters() &&
-            isAccessibleType(element)) {
+        if (element instanceof IGenericInstance && element.containsGenericParameters()) {
+            TypeReference target = MetadataHelper.erase(declared);
 
-            final CastExpression cast = new CastExpression(_astBuilder.convertType(MetadataHelper.erase(declared)), result);
+            if (!isAccessibleType(element)) {
+                // Such a result can only be consumed as one of its supertypes.
+                target = accessibleGenericSupertype(element);
+
+                if (target == null) {
+                    return result;
+                }
+
+                for (TypeReference type = declared; type.isArray(); type = type.getElementType()) {
+                    target = target.makeArrayType();
+                }
+            }
+
+            final CastExpression cast = new CastExpression(_astBuilder.convertType(target), result);
             cast.putUserData(Keys.RESULT_CAST, true);
             return cast;
         }
@@ -1379,9 +1399,24 @@ public class AstMethodBodyBuilder {
         final TypeReference type = value.getUserData(Keys.WIDENED_TYPE);
         final VariableDefinition original = variable.getOriginalVariable();
 
+        if (variable.isParameter() || original != null && original.isFromMetadata()) {
+            return;
+        }
+
+        Expression source = value;
+
+        while (source instanceof CastExpression && !isWidened(source)) {
+            source = ((CastExpression) source).getExpression();
+        }
+
+        final List<TypeReference> bounds = source.getUserData(Keys.WIDENED_BOUNDS);
+
+        if (bounds != null) {
+            // The members of the local are only known as far as the widening allows.
+            _widenedLocals.put(variable, bounds);
+        }
+
         if (type != null &&
-            !variable.isParameter() &&
-            (original == null || !original.isFromMetadata()) &&
             variable.getType() != null &&
             MetadataHelper.isAssignableFrom(type, variable.getType())) {
 
@@ -1471,6 +1506,38 @@ public class AstMethodBodyBuilder {
     private static boolean isWidened(final Expression expression) {
         return expression.getUserData(Keys.RESULT_CAST) != null ||
                expression.getUserData(Keys.WIDENED_RECEIVER) != null;
+    }
+
+    /**
+     * Returns the nearest generic superclass or interface of a type which can be named here, as a raw
+     * type, or {@code null}.
+     */
+    private TypeReference accessibleGenericSupertype(final TypeReference type) {
+        final List<TypeDefinition> classes = new ArrayList<>();
+
+        for (TypeDefinition definition = type.resolve(); definition != null; ) {
+            classes.add(definition);
+
+            final TypeReference baseType = definition.getBaseType();
+
+            definition = baseType != null ? baseType.resolve() : null;
+        }
+
+        final List<TypeReference> supertypes = new ArrayList<TypeReference>(classes);
+
+        for (final TypeDefinition definition : classes) {
+            supertypes.addAll(definition.getExplicitInterfaces());
+        }
+
+        for (final TypeReference supertype : supertypes) {
+            final TypeDefinition definition = supertype.resolve();
+
+            if (definition != null && definition.isGenericDefinition() && isAccessibleType(definition)) {
+                return MetadataHelper.erase(definition);
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -2027,8 +2094,8 @@ public class AstMethodBodyBuilder {
     }
 
     /**
-     * Tells whether an overload accepts the types of all the arguments.  Parameters declared with type
-     * variables are not examined.
+     * Tells whether an overload accepts the types of all the arguments.  Of a parameter declared with a
+     * type variable, only the bounds are examined.
      */
     private static boolean isApplicable(final MethodReference candidate, final Map<Integer, TypeReference> argumentTypes) {
         return all(
@@ -2122,7 +2189,14 @@ public class AstMethodBodyBuilder {
 
     private static boolean accepts(final TypeReference parameterType, final TypeReference argumentType) {
         if (parameterType.isGenericParameter()) {
-            return true;
+            final TypeReference boxed = argumentType.isPrimitive() ? MetadataHelper.getBoxedTypeOrSelf(argumentType)
+                                                                   : argumentType;
+
+            return all(
+                typesOf(MetadataHelper.getUpperBound(parameterType)),
+                bound -> bound.isGenericParameter() ||
+                         MetadataHelper.isAssignableFrom(MetadataHelper.erase(bound), boxed)
+            );
         }
 
         if (parameterType.isPrimitive()) {
