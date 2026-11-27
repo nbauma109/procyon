@@ -1180,6 +1180,18 @@ public class GenericsTests extends DecompilerTest {
             "    void arrayed(final Integer e, final List<String> list, final Integer[] array) {\n" +
             "        this.filled(e, list, array);\n" +
             "    }\n" +
+            "    <E extends Number> void odd(final E e, final List<Odd> list) {\n" +
+            "    }\n" +
+            "    <N extends Comparable<N>> void odd(final Integer e, final Collection<N> list) {\n" +
+            "    }\n" +
+            "    <E extends Number> void tables(final E e, final List<String[]> a, final List<Integer[]> b) {\n" +
+            "    }\n" +
+            "    <N> void tables(final Integer e, final Collection<N[]> a, final Collection<N[]> b) {\n" +
+            "    }\n" +
+            "    void bounds(final Integer e, final List<Odd> odd, final List<String[]> a, final List<Integer[]> b) {\n" +
+            "        this.odd(e, odd);\n" +
+            "        this.tables(e, a, b);\n" +
+            "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
             "    <N> void add(final Integer e, final Collection<N> list, final N n) {\n" +
@@ -1271,6 +1283,9 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void passed(final Risk risk, final IOException e) throws IOException {\n" +
             "        ((Hazard<IOException>)(Hazard)this.hazard((Hazard)risk)).rethrow(e);\n" +
+            "    }\n" +
+            "    void several(final Risk risk) throws IOException, ReflectiveOperationException {\n" +
+            "        ((Hazard<IOException>)(Hazard)this.hazard((Hazard)risk)).act();\n" +
             "    }\n" +
             "    void caught(final Risk risk) {\n" +
             "        try {\n" +
@@ -2300,6 +2315,23 @@ class Shared {
         this.filled(e, list, array);
     }
 
+    <E extends Number> void odd(final E e, final List<Odd> list) {
+    }
+
+    <N extends Comparable<N>> void odd(final Integer e, final Collection<N> list) {
+    }
+
+    <E extends Number> void tables(final E e, final List<String[]> a, final List<Integer[]> b) {
+    }
+
+    <N> void tables(final Integer e, final Collection<N[]> a, final Collection<N[]> b) {
+    }
+
+    void bounds(final Integer e, final List<Odd> odd, final List<String[]> a, final List<Integer[]> b) {
+        this.odd(e, odd);
+        this.tables(e, a, b);
+    }
+
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {
     }
 
@@ -2404,6 +2436,10 @@ class Writes {
         ((Hazard<IOException>) (Hazard) this.hazard((Hazard<?>) risk)).rethrow(e);
     }
 
+    void several(final Risk risk) throws IOException, ReflectiveOperationException {
+        ((Hazard<IOException>) (Hazard) this.hazard((Hazard<?>) risk)).act();
+    }
+
     void caught(final Risk risk) {
         try {
             ((Hazard<IOException>) (Hazard) this.hazard((Hazard<?>) risk)).act();
@@ -2423,6 +2459,10 @@ abstract class Hazard<X extends Exception> {
 
 @SuppressWarnings("unused") // decompiler fixture
 abstract class Risk extends Hazard<IOException> {
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+abstract class Odd implements Comparable<String> {
 }
 
 @SuppressWarnings("unused") // decompiler fixture

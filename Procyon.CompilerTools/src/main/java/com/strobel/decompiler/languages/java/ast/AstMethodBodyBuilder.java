@@ -1860,7 +1860,7 @@ public class AstMethodBodyBuilder {
 
     /**
      * Returns the exception which the type variable thrown by an invoked method may stand for: the one
-     * caught around the invocation, or else the only one declared by the method being decompiled, or
+     * caught around the invocation, or else the first one declared by the method being decompiled, or
      * {@code null}.
      */
     private TypeReference thrownTypeArgument(final MethodReference method, final int offset) {
@@ -1880,15 +1880,9 @@ public class AstMethodBodyBuilder {
                     return caught;
                 }
 
-                final List<TypeReference> declared = new ArrayList<>();
-
-                for (final TypeReference thrown : _context.getCurrentMethod().getThrownTypes()) {
-                    if (accepts(variable, thrown)) {
-                        declared.add(thrown);
-                    }
-                }
-
-                return declared.size() == 1 ? declared.get(0) : null;
+                // Any declared exception will do, as the cast through the raw type is not checked.
+                return firstOrDefault(_context.getCurrentMethod().getThrownTypes(),
+                                      thrown -> accepts(variable, thrown));
             }
         }
 
@@ -2795,6 +2789,10 @@ public class AstMethodBodyBuilder {
             }
         }
 
+        if (!satisfiesBounds(candidate.resolve(), bindings)) {
+            return false;
+        }
+
         // A wildcard only constrains the type for which its variable stands.
         for (final Map.Entry<GenericParameter, TypeReference> wildcard : wildcards) {
             final TypeReference bound = bindings.get(wildcard.getKey().getSimpleName());
@@ -2923,6 +2921,43 @@ public class AstMethodBodyBuilder {
     }
 
     /**
+     * Tells whether the types for which type variables stand are within their parameterized bounds,
+     * which may depend on those very types.
+     */
+    private static boolean satisfiesBounds(final MethodDefinition method, final Map<String, TypeReference> bindings) {
+        if (method == null) {
+            return true;
+        }
+
+        final Map<TypeReference, TypeReference> substitutions = new HashMap<>();
+
+        for (final GenericParameter variable : method.getGenericParameters()) {
+            final TypeReference binding = bindings.get(variable.getSimpleName());
+
+            if (binding != null) {
+                substitutions.put(variable, binding);
+            }
+        }
+
+        for (final Map.Entry<TypeReference, TypeReference> substitution : substitutions.entrySet()) {
+            final GenericParameter variable = (GenericParameter) substitution.getKey();
+
+            if (!variable.hasExtendsBound() || !(variable.getExtendsBound() instanceof IGenericInstance)) {
+                continue;
+            }
+
+            final TypeReference bound = TypeSubstitutionVisitor.instance().visit(variable.getExtendsBound(),
+                                                                                 substitutions);
+
+            if (!bound.containsGenericParameters() && !accepts(bound, substitution.getValue())) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Records the types for which the type variables of a parameter stand, however deeply they are
      * nested, and tells whether they agree.
      */
@@ -2960,16 +2995,25 @@ public class AstMethodBodyBuilder {
                 continue;
             }
 
-            if (target.isGenericParameter()) {
-                final TypeReference bound = bindings.putIfAbsent(target.getSimpleName(), source);
+            TypeReference element = target;
+            TypeReference argumentElement = source;
 
-                if (bound != null && !MetadataHelper.isSameType(bound, source)) {
+            // The elements of an array given as a type argument are bound as exactly as the array.
+            while (element.isArray() && argumentElement.isArray()) {
+                element = element.getElementType();
+                argumentElement = argumentElement.getElementType();
+            }
+
+            if (element.isGenericParameter() && !argumentElement.isPrimitive()) {
+                final TypeReference bound = bindings.putIfAbsent(element.getSimpleName(), argumentElement);
+
+                if (bound != null && !MetadataHelper.isSameType(bound, argumentElement)) {
                     return false;
                 }
             }
-            else if (target instanceof IGenericInstance &&
-                     source instanceof IGenericInstance &&
-                     !bind((IGenericInstance) target, (IGenericInstance) source, bindings, wildcards)) {
+            else if (element instanceof IGenericInstance &&
+                     argumentElement instanceof IGenericInstance &&
+                     !bind((IGenericInstance) element, (IGenericInstance) argumentElement, bindings, wildcards)) {
 
                 return false;
             }
