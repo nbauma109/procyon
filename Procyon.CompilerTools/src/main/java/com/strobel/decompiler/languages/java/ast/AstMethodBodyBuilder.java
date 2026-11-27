@@ -675,7 +675,7 @@ public class AstMethodBodyBuilder {
                 }
 
                 fieldReference.putUserData(Keys.MEMBER_REFERENCE, field);
-                return new AssignmentExpression(fieldReference, arg1);
+                return new AssignmentExpression(fieldReference, eraseConsumedResult(arg1));
             }
 
             case GetField: {
@@ -715,7 +715,7 @@ public class AstMethodBodyBuilder {
                 }
 
                 fieldReference.putUserData(Keys.MEMBER_REFERENCE, fieldOperand);
-                return new AssignmentExpression(fieldReference, arg2);
+                return new AssignmentExpression(fieldReference, eraseConsumedResult(arg2));
             }
 
             case InvokeSpecial:
@@ -898,7 +898,7 @@ public class AstMethodBodyBuilder {
                         variableOperand.getName());
                 name.putUserData(Keys.VARIABLE, variableOperand);
                 widenVariable(variableOperand, arg1);
-                return new AssignmentExpression(name, eraseStoredResult(arg1));
+                return new AssignmentExpression(name, eraseConsumedResult(arg1));
             }
 
             case LoadElement: {
@@ -928,7 +928,7 @@ public class AstMethodBodyBuilder {
             case StoreElement: {
                 return new AssignmentExpression(
                     new IndexerExpression( byteCode.getOffset(), discardResultCast(arg1), arg2),
-                    arg3
+                    eraseConsumedResult(arg3)
                 );
             }
 
@@ -997,7 +997,7 @@ public class AstMethodBodyBuilder {
                 return new BinaryOperatorExpression(arg1, BinaryOperatorType.LESS_THAN_OR_EQUAL, arg2);
 
             case Return:
-                return new ReturnStatement(byteCode.getOffset(), arg1);
+                return new ReturnStatement(byteCode.getOffset(), arg1 != null ? eraseConsumedResult(arg1) : null);
 
             case NewArray: {
                 final ArrayCreationExpression arrayCreation =
@@ -1469,10 +1469,10 @@ public class AstMethodBodyBuilder {
     }
 
     /**
-     * The type of a local storing a value which depends on a widened result, such as its iterator, one
-     * of its fields or an element of its array, was inferred before the widening.
+     * A value which depends on a widened result, such as its iterator, one of its fields or an element
+     * of its array, no longer has the parameterized type expected where it is stored, returned or passed.
      */
-    private Expression eraseStoredResult(final Expression value) {
+    private Expression eraseConsumedResult(final Expression value) {
         if (value.getUserData(Keys.WIDENED_RECEIVER) == null) {
             return value;
         }
@@ -1712,6 +1712,10 @@ public class AstMethodBodyBuilder {
 
         final JavaResolver resolver = new JavaResolver(_context);
         final ConvertTypeOptions options = new ConvertTypeOptions();
+        for (int i = 0, n = arguments.size(); i < n; i++) {
+            arguments.set(i, eraseConsumedResult(arguments.get(i)));
+        }
+
         final List<Expression> originals = new ArrayList<>(arguments);
 
         options.setAllowWildcards(false);
@@ -1971,7 +1975,8 @@ public class AstMethodBodyBuilder {
                 !other.isGenericParameter() &&
                 isAccessible(candidate) &&
                 MetadataHelper.isAssignableFrom(MetadataHelper.erase(other), argumentType) &&
-                isApplicable(candidate, argumentTypes)) {
+                isApplicable(candidate, argumentTypes) &&
+                !isLessSpecific(candidate, definition)) {
 
                 competing.add(MetadataHelper.erase(other));
             }
@@ -2010,6 +2015,24 @@ public class AstMethodBodyBuilder {
         );
     }
 
+    /**
+     * Tells whether an overload accepts whatever the invoked method accepts, in which case the compiler
+     * prefers the latter without any cast.
+     */
+    private static boolean isLessSpecific(final MethodReference candidate, final MethodDefinition method) {
+        final List<ParameterDefinition> parameters = method.getParameters();
+
+        for (int i = 0, n = parameters.size(); i < n; i++) {
+            if (!accepts(candidate.getParameters().get(i).getParameterType(),
+                         MetadataHelper.erase(parameters.get(i).getParameterType()))) {
+
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static boolean accepts(final TypeReference parameterType, final TypeReference argumentType) {
         if (parameterType.isGenericParameter()) {
             return true;
@@ -2021,10 +2044,22 @@ public class AstMethodBodyBuilder {
             return unboxed.isPrimitive() && MetadataHelper.isAssignableFrom(parameterType, unboxed);
         }
 
-        return MetadataHelper.isAssignableFrom(
-            MetadataHelper.erase(parameterType),
-            argumentType.isPrimitive() ? MetadataHelper.getBoxedTypeOrSelf(argumentType) : argumentType
-        );
+        final TypeReference reference = argumentType.isPrimitive() ? MetadataHelper.getBoxedTypeOrSelf(argumentType)
+                                                                   : argumentType;
+
+        if (!MetadataHelper.isAssignableFrom(MetadataHelper.erase(parameterType), reference)) {
+            return false;
+        }
+
+        if (!(parameterType instanceof IGenericInstance) || parameterType.containsGenericParameters()) {
+            return true;
+        }
+
+        // The type arguments of the argument must be among those of the parameter.
+        final TypeDefinition definition = parameterType.resolve();
+        final TypeReference asParameterType = definition != null ? MetadataHelper.asSuper(definition, reference) : null;
+
+        return asParameterType == null || isLegalCast(parameterType, asParameterType);
     }
 
     /** Tells whether the type given to a generic parameter is also one which the method throws. */

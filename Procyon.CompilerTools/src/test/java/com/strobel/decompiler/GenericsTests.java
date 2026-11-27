@@ -9,6 +9,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.Optional;
 import java.util.Collections;
+import java.util.Collection;
 import java.util.stream.Collectors;
 import java.util.Map;
 import java.util.ArrayList;
@@ -582,6 +583,49 @@ public class GenericsTests extends DecompilerTest {
             "        this.flag(n, 1);\n" +
             "        this.widen((Number)n, 1);\n" +
             "        this.box((Number)n, 1);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testConsumedChainsAndOverloadsWhichCannotDisplace() {
+        verifyOutput(
+            Chained.class,
+            defaultSettings(),
+            "class Chained {\n" +
+            "    static List<String> shared;\n" +
+            "    List<String> field;\n" +
+            "    <T extends CharSequence> List<T> wrap(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<String> wrap(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    static void use(final List<String> list) {\n" +
+            "    }\n" +
+            "    List<String> returned(final String s) {\n" +
+            "        return (List)this.wrap((CharSequence)s).subList(0, 1);\n" +
+            "    }\n" +
+            "    void passed(final String s) {\n" +
+            "        use((List)this.wrap((CharSequence)s).subList(0, 1));\n" +
+            "    }\n" +
+            "    void stored(final String s, final List<String>[] lists) {\n" +
+            "        this.field = (List)this.wrap((CharSequence)s).subList(0, 1);\n" +
+            "        Chained.shared = (List)this.wrap((CharSequence)s).subList(0, 1);\n" +
+            "        lists[0] = (List)this.wrap((CharSequence)s).subList(0, 1);\n" +
+            "    }\n" +
+            "    <N extends Number> void constrained(final N n, final List<Integer> list) {\n" +
+            "    }\n" +
+            "    void constrained(final Integer n, final Collection<String> list) {\n" +
+            "    }\n" +
+            "    <N extends Integer> void specific(final N n) {\n" +
+            "    }\n" +
+            "    void specific(final Number n) {\n" +
+            "    }\n" +
+            "    void direct(final Integer n, final List<Integer> list) {\n" +
+            "        this.constrained(n, list);\n" +
+            "        this.specific(n);\n" +
             "    }\n" +
             "}\n"
         );
@@ -1292,6 +1336,54 @@ class Indexed {
         this.flag(n, 1);
         this.widen((Number) n, 1);
         this.box((Number) n, 1);
+    }
+}
+
+@SuppressWarnings({ "unused", "unchecked" }) // decompiler fixture
+class Chained {
+    static List<String> shared;
+    List<String> field;
+
+    <T extends CharSequence> List<T> wrap(final T t) {
+        return null;
+    }
+
+    List<String> wrap(final String s) {
+        return null;
+    }
+
+    static void use(final List<String> list) {
+    }
+
+    List<String> returned(final String s) {
+        return (List) this.wrap((CharSequence) s).subList(0, 1);
+    }
+
+    void passed(final String s) {
+        use((List) this.wrap((CharSequence) s).subList(0, 1));
+    }
+
+    void stored(final String s, final List<String>[] lists) {
+        this.field = (List) this.wrap((CharSequence) s).subList(0, 1);
+        shared = (List) this.wrap((CharSequence) s).subList(0, 1);
+        lists[0] = (List) this.wrap((CharSequence) s).subList(0, 1);
+    }
+
+    <N extends Number> void constrained(final N n, final List<Integer> list) {
+    }
+
+    void constrained(final Integer n, final Collection<String> list) {
+    }
+
+    <N extends Integer> void specific(final N n) {
+    }
+
+    void specific(final Number n) {
+    }
+
+    void direct(final Integer n, final List<Integer> list) {
+        this.constrained(n, list);
+        this.specific(n);
     }
 }
 
