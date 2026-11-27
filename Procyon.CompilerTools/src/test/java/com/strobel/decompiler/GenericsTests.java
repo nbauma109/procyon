@@ -87,6 +87,10 @@ public class GenericsTests extends DecompilerTest {
                 "        Counted<Integer> n = (Counted<Integer>) (Counted) counted((Counted<?>) c);",
                 "        return n::get;",
                 "    }",
+                "    java.util.function.UnaryOperator<String> unary(Fixed f) {",
+                "        Keyed<String> u = (Keyed<String>) (Keyed) keyed((Keyed<?>) f);",
+                "        return u::get;",
+                "    }",
                 "    java.util.function.Supplier<String[]> arrays(Several s) {",
                 "        Many<String> m = (Many<String>) (Many) many((Many<?>) s);",
                 "        return m::all;",
@@ -184,6 +188,9 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    Fn<String, Integer> numbers(final Count count) {\n" +
             "        return (Fn)(Fn<String, Number>)this.counted((Counted)count)::get;\n" +
+            "    }\n" +
+            "    UnaryOperator<String> unary(final Fixed fixed) {\n" +
+            "        return ((Keyed<String>)(Keyed)this.keyed((Keyed)fixed))::get;\n" +
             "    }\n" +
             "    Supplier<String[]> arrays(final Several several) {\n" +
             "        return (Supplier)this.many((Many)several)::all;\n" +
@@ -1049,6 +1056,24 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void write(final String s, final List<String> list) {\n" +
             "        this.crate((CharSequence)s).values = (List)list;\n" +
+            "    }\n" +
+            "    <T extends CharSequence> List<T>[] arrays(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<String>[] arrays(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    void element(final String s, final List<String> list) {\n" +
+            "        ((List[])(List[])this.arrays((CharSequence)s))[0] = list;\n" +
+            "    }\n" +
+            "    <T extends Hazard<?>> T hazard(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Risk hazard(final Risk risk) {\n" +
+            "        return risk;\n" +
+            "    }\n" +
+            "    void act(final Risk risk) throws IOException {\n" +
+            "        ((Hazard<IOException>)(Hazard)this.hazard((Hazard)risk)).act();\n" +
             "    }\n" +
             "}\n"
         );
@@ -2092,6 +2117,39 @@ class Writes {
     void write(final String s, final List<String> list) {
         ((Crate<String>) (Crate) this.crate((CharSequence) s)).values = list;
     }
+
+    <T extends CharSequence> List<T>[] arrays(final T t) {
+        return null;
+    }
+
+    List<String>[] arrays(final String s) {
+        return null;
+    }
+
+    void element(final String s, final List<String> list) {
+        ((List<String>[]) (List[]) this.arrays((CharSequence) s))[0] = list;
+    }
+
+    <T extends Hazard<?>> T hazard(final T t) {
+        return t;
+    }
+
+    Risk hazard(final Risk risk) {
+        return risk;
+    }
+
+    void act(final Risk risk) throws IOException {
+        ((Hazard<IOException>) (Hazard) this.hazard((Hazard<?>) risk)).act();
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+abstract class Hazard<X extends Exception> {
+    abstract void act() throws X;
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+abstract class Risk extends Hazard<IOException> {
 }
 
 @SuppressWarnings("unused") // decompiler fixture

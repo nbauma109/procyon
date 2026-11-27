@@ -844,7 +844,23 @@ public class AstMethodBodyBuilder {
                         returned.isGenericParameter() &&
                         byteCode.getInferredType() instanceof IGenericInstance) {
 
-                        return adaptReturnType(methodGroup, targetMethod, (IGenericInstance) byteCode.getInferredType());
+                        final TypeReference functionType = byteCode.getInferredType();
+                        final Object implemented = callSite.getBootstrapArguments().get(2);
+
+                        // An inherited descriptor cannot be adapted, so the receiver is specialized.
+                        if (!targetMethod.getParameters().isEmpty() &&
+                            withObjectResult(functionType) == null &&
+                            implemented instanceof IMethodSignature &&
+                            specializeReceiver(
+                                methodGroup,
+                                declaringType,
+                                ((IMethodSignature) implemented).getReturnType()
+                            )) {
+
+                            return methodGroup;
+                        }
+
+                        return adaptReturnType(methodGroup, targetMethod, (IGenericInstance) functionType);
                     }
 
                     return methodGroup;
@@ -1008,9 +1024,17 @@ public class AstMethodBodyBuilder {
                 return element;
             }
             case StoreElement: {
+                final boolean widened = isWidened(arg1);
+                final Expression target = discardResultCast(arg1);
+                final TypeReference storedArray = widened ? declaredTypeOf(target) : null;
+                final Expression value = eraseConsumedResult(arg3);
+
                 return new AssignmentExpression(
-                    new IndexerExpression( byteCode.getOffset(), discardResultCast(arg1), arg2),
-                    eraseConsumedResult(arg3)
+                    new IndexerExpression( byteCode.getOffset(), target, arg2),
+                    storedArray != null && storedArray.isArray()
+                    // Only a raw value still fits an element typed as before the widening.
+                    ? eraseParameterizedResult(storedArray.getElementType(), value)
+                    : value
                 );
             }
 
@@ -1231,6 +1255,15 @@ public class AstMethodBodyBuilder {
             }
             else {
                 target = discardResultCast(receiver);
+
+                if (widenedReceiver) {
+                    // A widened receiver would throw the bound of its type variable.
+                    final TypeReference thrown = thrownTypeArgument(methodReference);
+
+                    if (thrown != null) {
+                        target = specializedReceiver(target, declaringType, thrown);
+                    }
+                }
             }
 
             if (target instanceof NullReferenceExpression) {
@@ -1387,7 +1420,9 @@ public class AstMethodBodyBuilder {
             element = element.getElementType();
         }
 
-        if (element instanceof IGenericInstance && element.containsGenericParameters()) {
+        if (element instanceof IGenericInstance &&
+            element.containsGenericParameters() &&
+            !(result instanceof NullReferenceExpression)) {
             TypeReference target = MetadataHelper.erase(declared);
 
             if (!isAccessibleType(element)) {
@@ -1632,6 +1667,91 @@ public class AstMethodBodyBuilder {
         return bounds;
     }
 
+    private boolean specializeReceiver(
+        final MethodGroupExpression methodGroup,
+        final TypeReference declaringType,
+        final TypeReference typeArgument) {
+
+        final Expression target = methodGroup.getTarget();
+
+        target.remove();
+
+        final Expression specialized = specializedReceiver(target, declaringType, typeArgument);
+
+        if (specialized == target) {
+            methodGroup.setTarget(target);
+            return false;
+        }
+
+        methodGroup.setTarget(new ParenthesizedExpression(specialized));
+        return true;
+    }
+
+    /**
+     * Casts a receiver, through its raw type, to its class with the given type argument, if the class has
+     * a single type variable which accepts it.
+     */
+    private Expression specializedReceiver(
+        final Expression receiver,
+        final TypeReference declaringType,
+        final TypeReference typeArgument) {
+
+        final TypeDefinition definition = declaringType.resolve();
+
+        if (definition == null ||
+            definition.getGenericParameters().size() != 1 ||
+            typeArgument == null ||
+            typeArgument.isPrimitive() ||
+            !accepts(definition.getGenericParameters().get(0), typeArgument)) {
+
+            return receiver;
+        }
+
+        final CastExpression raw = new CastExpression(
+            _astBuilder.convertType(MetadataHelper.erase(definition)),
+            receiver
+        );
+
+        final CastExpression cast = new CastExpression(
+            _astBuilder.convertType(definition.makeGenericType(typeArgument)),
+            raw
+        );
+
+        raw.putUserData(Keys.RESULT_CAST, true);
+        cast.putUserData(Keys.RESULT_CAST, true);
+        return cast;
+    }
+
+    /**
+     * Returns the only exception declared by the method being decompiled which the type variable thrown
+     * by an invoked method accepts, or {@code null}.
+     */
+    private TypeReference thrownTypeArgument(final MethodReference method) {
+        final MethodDefinition definition = method.resolve();
+
+        if (definition == null) {
+            return null;
+        }
+
+        for (final GenericParameter variable : definition.getDeclaringType().getGenericParameters()) {
+            if (any(definition.getThrownTypes(), t -> t.isGenericParameter() &&
+                                                      t.getSimpleName().equals(variable.getSimpleName()))) {
+
+                final List<TypeReference> declared = new ArrayList<>();
+
+                for (final TypeReference thrown : _context.getCurrentMethod().getThrownTypes()) {
+                    if (accepts(variable, thrown)) {
+                        declared.add(thrown);
+                    }
+                }
+
+                return declared.size() == 1 ? declared.get(0) : null;
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Casts a method reference to its raw functional interface, whose result accepts any type.  Where
      * the method takes arguments, their types are first kept by naming only the result type as the bound
@@ -1665,7 +1785,7 @@ public class AstMethodBodyBuilder {
      * variable, or {@code null} if its result is not declared as a variable with such a bound.
      */
     private static TypeReference withObjectResult(final TypeReference type) {
-        final TypeDefinition definition = type.resolve();
+        final TypeDefinition definition = type != null ? type.resolve() : null;
 
         if (definition == null) {
             return null;
@@ -1811,6 +1931,16 @@ public class AstMethodBodyBuilder {
             return value;
         }
 
+        final TypeReference declared = declaredTypeOf(value);
+
+        return declared != null ? eraseParameterizedResult(declared, value) : value;
+    }
+
+    /**
+     * Returns the type with which the value of a member, or of an element of the array which it holds,
+     * is declared, if it is known.
+     */
+    private static TypeReference declaredTypeOf(final Expression value) {
         Expression source = value;
         int depth = 0;
 
@@ -1821,15 +1951,11 @@ public class AstMethodBodyBuilder {
 
         TypeReference declared = declaredType(source.getUserData(Keys.MEMBER_REFERENCE));
 
-        if (declared == null) {
-            return value;
-        }
-
-        while (depth-- > 0 && declared.isArray()) {
+        while (declared != null && depth-- > 0 && declared.isArray()) {
             declared = declared.getElementType();
         }
 
-        return eraseParameterizedResult(declared, value);
+        return declared;
     }
 
     /** Returns the type with which a field or the result of a method is declared, if it is known. */
