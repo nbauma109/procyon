@@ -1846,33 +1846,52 @@ public class AstMethodBodyBuilder {
         final List<ParameterDefinition> declared = definition.getParameters();
         final List<ParameterDefinition> actual = implemented.getParameters();
 
-        for (int i = 0; i < declared.size() && i < actual.size(); i++) {
-            addTypeArgument(arguments, declared.get(i).getParameterType(), actual.get(i).getParameterType());
-        }
-
-        addTypeArgument(arguments, definition.getReturnType(), implemented.getReturnType());
-
         // The implemented signature is erased, unlike the types of the functional interface.
         final MethodDefinition descriptor = functionType != null ? descriptorOf(functionType.resolve()) : null;
+
+        for (int i = 0; i < declared.size() && i < actual.size(); i++) {
+            final Map<String, TypeReference> determined = new HashMap<>();
+
+            addTypeArgument(determined, declared.get(i).getParameterType(), actual.get(i).getParameterType());
+
+            if (descriptor != null && i < descriptor.getParameters().size()) {
+                final TypeReference actualType = typeArgumentIn(descriptor.getParameters().get(i).getParameterType(),
+                                                                descriptor,
+                                                                functionType);
+
+                if (actualType != null) {
+                    addNestedTypeArguments(determined, declared.get(i).getParameterType(), actualType);
+                }
+            }
+
+            mergeTypeArguments(arguments, determined);
+        }
+
+        final Map<String, TypeReference> determined = new HashMap<>();
+
+        addTypeArgument(determined, definition.getReturnType(), implemented.getReturnType());
+
         final TypeReference result = descriptor != null
                                      ? typeArgumentIn(descriptor.getReturnType(), descriptor, functionType)
                                      : null;
 
         if (result != null) {
-            addNestedTypeArguments(arguments, definition.getReturnType(), result);
+            addNestedTypeArguments(determined, definition.getReturnType(), result);
         }
 
-        for (int i = 0; descriptor != null && i < declared.size() && i < descriptor.getParameters().size(); i++) {
-            final TypeReference actualType = typeArgumentIn(descriptor.getParameters().get(i).getParameterType(),
-                                                            descriptor,
-                                                            functionType);
-
-            if (actualType != null) {
-                addNestedTypeArguments(arguments, declared.get(i).getParameterType(), actualType);
-            }
-        }
+        mergeTypeArguments(arguments, determined);
 
         return arguments;
+    }
+
+    /** Adds type arguments, so that a variable given several accepts all of them. */
+    private static void mergeTypeArguments(
+        final Map<String, TypeReference> arguments,
+        final Map<String, TypeReference> added) {
+
+        for (final Map.Entry<String, TypeReference> entry : added.entrySet()) {
+            arguments.merge(entry.getKey(), entry.getValue(), AstMethodBodyBuilder::commonType);
+        }
     }
 
     private static void addNestedTypeArguments(
@@ -1967,9 +1986,7 @@ public class AstMethodBodyBuilder {
                 addTypeArgument(determined, declared, argument.getType());
                 addNestedTypeArguments(determined, declared, argument.getType());
 
-                for (final Map.Entry<String, TypeReference> entry : determined.entrySet()) {
-                    typeArguments.merge(entry.getKey(), entry.getValue(), AstMethodBodyBuilder::commonType);
-                }
+                mergeTypeArguments(typeArguments, determined);
             }
         }
 
@@ -2232,26 +2249,36 @@ public class AstMethodBodyBuilder {
 
     /** Returns the abstract method of a functional interface, which it may inherit. */
     private static MethodDefinition descriptorOf(final TypeDefinition type) {
+        final List<MethodDefinition> methods = new ArrayList<>();
+
+        addInterfaceMethods(type, methods);
+
+        // An inherited method which a default one overrides is no longer abstract.
+        return firstOrDefault(
+            methods,
+            method -> method.isAbstract() &&
+                      !isObjectMethod(method) &&
+                      !any(methods, other -> other.isDefault() &&
+                                             parameterSignature(other).equals(parameterSignature(method)))
+        );
+    }
+
+    private static void addInterfaceMethods(final TypeDefinition type, final List<MethodDefinition> methods) {
         if (type == null) {
-            return null;
+            return;
         }
 
-        for (final MethodDefinition method : type.getDeclaredMethods()) {
-            // Redeclared methods of Object do not make an interface functional.
-            if (method.isAbstract() && !isObjectMethod(method)) {
-                return method;
-            }
-        }
+        methods.addAll(type.getDeclaredMethods());
 
         for (final TypeReference superInterface : type.getExplicitInterfaces()) {
-            final MethodDefinition inherited = descriptorOf(superInterface.resolve());
-
-            if (inherited != null) {
-                return inherited;
-            }
+            addInterfaceMethods(superInterface.resolve(), methods);
         }
+    }
 
-        return null;
+    private static String parameterSignature(final MethodDefinition method) {
+        final String signature = method.getErasedSignature();
+
+        return method.getName() + signature.substring(0, signature.indexOf(')'));
     }
 
     private static boolean isUnchecked(final TypeReference exception) {

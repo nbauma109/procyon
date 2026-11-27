@@ -239,6 +239,17 @@ public class GenericsTests extends DecompilerTest {
                 "        Keyed<String> m2 = (Keyed<String>) (Keyed) keyed((Keyed<?>) f);",
                 "        return m2::get;",
                 "    }",
+                "    static class Joiner<X, E extends Exception> { String act(X a, X b) throws E { return null; } }",
+                "    static class Joining extends Joiner<java.io.Serializable, java.io.IOException> { }",
+                "    <T extends Joiner<?, ?>> T joiner(T t) { return t; }",
+                "    Joining joiner(Joining t) { return t; }",
+                "    interface Dummy { void dummy() throws java.sql.SQLException; }",
+                "    interface Runner { String run(String s, Integer i) throws java.io.IOException; }",
+                "    interface Both3 extends Dummy, Runner { default void dummy() { } }",
+                "    Both3 joined(Joining t) {",
+                "        Joiner<java.io.Serializable, java.io.IOException> j = (Joiner<java.io.Serializable, java.io.IOException>) (Joiner) joiner((Joiner<?, ?>) t);",
+                "        return j::act;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -496,6 +507,15 @@ public class GenericsTests extends DecompilerTest {
             "    Same<String> samely(final Fixed fixed) {\n" +
             "        return ((Keyed<String>)(Keyed)this.keyed((Keyed)fixed))::get;\n" +
             "    }\n" +
+            "    <T extends Joiner<?, ?>> T joiner(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Joining joiner(final Joining joining) {\n" +
+            "        return joining;\n" +
+            "    }\n" +
+            "    Both3 joined(final Joining joining) {\n" +
+            "        return ((Joiner<Serializable, IOException>)(Joiner)this.joiner((Joiner)joining))::act;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -524,6 +544,23 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    interface Both3 extends Dummy, Runner {\n" +
+            "        default void dummy() {\n" +
+            "        }\n" +
+            "    }\n" +
+            "    interface Dummy {\n" +
+            "        void dummy() throws SQLException;\n" +
+            "    }\n" +
+            "    interface Runner {\n" +
+            "        String run(final String p0, final Integer p1) throws IOException;\n" +
+            "    }\n" +
+            "    static class Joining extends Joiner<Serializable, IOException> {\n" +
+            "    }\n" +
+            "    static class Joiner<X, E extends Exception> {\n" +
+            "        String act(final X x, final X x2) throws E, Exception {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    interface Same<T> {\n" +
             "        T apply(final T p0);\n" +
