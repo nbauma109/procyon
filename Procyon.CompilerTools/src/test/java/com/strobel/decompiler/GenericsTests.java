@@ -191,6 +191,22 @@ public class GenericsTests extends DecompilerTest {
                 "        Piled<Integer, Integer> h = (Piled<Integer, Integer>) (Piled) piled((Piled<?, ?>) t);",
                 "        return h::get;",
                 "    }",
+                "    String reassigned(String s, int n) {",
+                "        Object x = take((CharSequence) s);",
+                "        while (n-- > 0) {",
+                "            x = two((java.io.Serializable) s);",
+                "        }",
+                "        return x.toString() + x.hashCode();",
+                "    }",
+                "    static class Results<X, E extends Exception> { java.util.List<X> get() throws E { return null; } }",
+                "    static class Resulting extends Results<String, java.io.IOException> { }",
+                "    <T extends Results<?, ?>> T results(T t) { return t; }",
+                "    Resulting results(Resulting t) { return t; }",
+                "    interface Lists { java.util.List<String> run() throws java.io.IOException; }",
+                "    Lists resulted(Resulting t) {",
+                "        Results<String, java.io.IOException> y = (Results<String, java.io.IOException>) (Results) results((Results<?, ?>) t);",
+                "        return y::get;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -402,6 +418,22 @@ public class GenericsTests extends DecompilerTest {
             "    ToIntFunction<List<Integer[]>> stacked(final Piles piles) {\n" +
             "        return ((Piled<Integer, Integer>)(Piled)this.piled((Piled)piles))::get;\n" +
             "    }\n" +
+            "    String reassigned(final String s, int n) {\n" +
+            "        Object s2 = this.take((CharSequence)s);\n" +
+            "        while (n-- > 0) {\n" +
+            "            s2 = this.two((Serializable)s);\n" +
+            "        }\n" +
+            "        return s2.toString() + s2.hashCode();\n" +
+            "    }\n" +
+            "    <T extends Results<?, ?>> T results(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Resulting results(final Resulting resulting) {\n" +
+            "        return resulting;\n" +
+            "    }\n" +
+            "    Lists resulted(final Resulting resulting) {\n" +
+            "        return ((Results<String, IOException>)(Results)this.results((Results)resulting))::get;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -430,6 +462,16 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    interface Lists {\n" +
+            "        List<String> run() throws IOException;\n" +
+            "    }\n" +
+            "    static class Resulting extends Results<String, IOException> {\n" +
+            "    }\n" +
+            "    static class Results<X, E extends Exception> {\n" +
+            "        List<X> get() throws E, Exception {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    static class Piles extends Piled<Integer, Integer> {\n" +
             "    }\n" +
@@ -1507,6 +1549,23 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void several(final Risk risk) throws IOException, ReflectiveOperationException {\n" +
             "        ((Hazard<IOException>)(Hazard)this.hazard((Hazard)risk)).act();\n" +
+            "    }\n" +
+            "    <T extends Hazard<?>> T broad(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Wide broad(final Wide wide) {\n" +
+            "        return wide;\n" +
+            "    }\n" +
+            "    void handled(final Wide wide) throws Exception {\n" +
+            "        try {\n" +
+            "            ((Hazard<Exception>)(Hazard)this.broad((Hazard)wide)).act();\n" +
+            "        }\n" +
+            "        catch (final IOException e) {\n" +
+            "            e.printStackTrace();\n" +
+            "        }\n" +
+            "        catch (final SQLException e2) {\n" +
+            "            e2.printStackTrace();\n" +
+            "        }\n" +
             "    }\n" +
             "    void caught(final Risk risk) {\n" +
             "        try {\n" +
@@ -2768,6 +2827,25 @@ class Writes {
     void several(final Risk risk) throws IOException, ReflectiveOperationException {
         ((Hazard<IOException>) (Hazard) this.hazard((Hazard<?>) risk)).act();
     }
+    <T extends Hazard<?>> T broad(final T t) {
+        return t;
+    }
+
+    Wide broad(final Wide wide) {
+        return wide;
+    }
+
+    void handled(final Wide wide) throws Exception {
+        try {
+            ((Hazard<Exception>) (Hazard) this.broad((Hazard<?>) wide)).act();
+        }
+        catch (final IOException e) {
+            e.printStackTrace();
+        }
+        catch (final SQLException e) {
+            e.printStackTrace();
+        }
+    }
 
     void caught(final Risk risk) {
         try {
@@ -2788,6 +2866,10 @@ abstract class Hazard<X extends Exception> {
 
 @SuppressWarnings("unused") // decompiler fixture
 abstract class Risk extends Hazard<IOException> {
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+abstract class Wide extends Hazard<Exception> {
 }
 
 @SuppressWarnings("unused") // decompiler fixture

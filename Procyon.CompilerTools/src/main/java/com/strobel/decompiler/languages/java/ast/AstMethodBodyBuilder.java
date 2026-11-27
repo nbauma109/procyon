@@ -1662,6 +1662,13 @@ public class AstMethodBodyBuilder {
             variable.setType(type);
             _widenedVariables.add(variable);
         }
+        else if (type != null &&
+                 _widenedVariables.contains(variable) &&
+                 !MetadataHelper.isAssignableFrom(variable.getType(), type)) {
+
+            // Another assignment widened the local to an unrelated type.
+            variable.setType(MetadataHelper.findCommonSuperType(variable.getType(), type));
+        }
     }
 
     /**
@@ -1827,8 +1834,15 @@ public class AstMethodBodyBuilder {
 
         addTypeArgument(arguments, definition.getReturnType(), implemented.getReturnType());
 
-        // The implemented signature is erased, unlike the parameters of the functional interface.
+        // The implemented signature is erased, unlike the types of the functional interface.
         final MethodDefinition descriptor = functionType != null ? descriptorOf(functionType.resolve()) : null;
+        final TypeReference result = descriptor != null
+                                     ? typeArgumentIn(descriptor.getReturnType(), descriptor, functionType)
+                                     : null;
+
+        if (result != null) {
+            addNestedTypeArguments(arguments, definition.getReturnType(), result);
+        }
 
         for (int i = 0; descriptor != null && i < declared.size() && i < descriptor.getParameters().size(); i++) {
             final TypeReference actualType = typeArgumentIn(descriptor.getParameters().get(i).getParameterType(),
@@ -2018,10 +2032,37 @@ public class AstMethodBodyBuilder {
      */
     private Map<String, TypeReference> thrownTypeArguments(final MethodReference method, final int offset) {
         final List<TypeReference> candidates = caughtTypes(offset);
+        final List<TypeReference> checked = new ArrayList<>();
+
+        for (final TypeReference caught : candidates) {
+            if (!isUnchecked(caught)) {
+                checked.add(caught);
+            }
+        }
 
         candidates.addAll(_context.getCurrentMethod().getThrownTypes());
 
-        return assignExceptions(thrownClassVariables(method), candidates);
+        final List<GenericParameter> variables = thrownClassVariables(method);
+
+        // A single variable must stand for a type which leaves every handler reachable.
+        if (variables.size() == 1 && checked.size() > 1) {
+            TypeReference covering = firstOrDefault(
+                candidates,
+                candidate -> all(checked, caught -> MetadataHelper.isAssignableFrom(candidate, caught))
+            );
+
+            if (covering == null) {
+                covering = checked.get(0);
+
+                for (final TypeReference caught : checked) {
+                    covering = MetadataHelper.findCommonSuperType(covering, caught);
+                }
+            }
+
+            candidates.add(0, covering);
+        }
+
+        return assignExceptions(variables, candidates);
     }
 
     /**
@@ -2151,6 +2192,22 @@ public class AstMethodBodyBuilder {
         }
 
         return null;
+    }
+
+    private static boolean isUnchecked(final TypeReference exception) {
+        for (TypeDefinition type = exception.resolve(); type != null; ) {
+            final String name = type.getInternalName();
+
+            if ("java/lang/RuntimeException".equals(name) || "java/lang/Error".equals(name)) {
+                return true;
+            }
+
+            final TypeReference baseType = type.getBaseType();
+
+            type = baseType != null ? baseType.resolve() : null;
+        }
+
+        return false;
     }
 
     /** Returns the types of the handlers around an instruction, innermost first. */
