@@ -83,6 +83,7 @@ public final class RedundantCastUtility {
 
         if (operand.isNull() ||
             castExpression.getUserData(Keys.RESULT_CAST) != null ||
+            castExpression.getUserData(Keys.SELECTS_OVERLOAD) != null ||
             restoresResultType(operand) ||
             narrowsWidenedResult(castExpression, operand)) {
 
@@ -127,7 +128,19 @@ public final class RedundantCastUtility {
             return false;
         }
 
-        final MemberReference member = operand.getUserData(Keys.MEMBER_REFERENCE);
+        Expression source = operand;
+        int depth = 0;
+
+        while (source instanceof IndexerExpression) {
+            source = removeParentheses(((IndexerExpression) source).getTarget());
+            depth++;
+
+            while (source instanceof CastExpression) {
+                source = removeParentheses(((CastExpression) source).getExpression());
+            }
+        }
+
+        final MemberReference member = source.getUserData(Keys.MEMBER_REFERENCE);
         TypeReference declared = null;
 
         if (member instanceof MethodReference) {
@@ -137,6 +150,11 @@ public final class RedundantCastUtility {
         else if (member instanceof FieldReference) {
             final FieldDefinition field = ((FieldReference) member).resolve();
             declared = field != null ? field.getFieldType() : null;
+        }
+
+        while (declared != null && declared.isArray() && depth > 0) {
+            declared = declared.getElementType();
+            depth--;
         }
 
         TypeReference castType = cast.getType().toTypeReference();

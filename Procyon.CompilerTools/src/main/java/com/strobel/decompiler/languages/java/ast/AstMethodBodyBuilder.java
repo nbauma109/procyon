@@ -902,11 +902,19 @@ public class AstMethodBodyBuilder {
             }
 
             case LoadElement: {
-                final boolean widened = isWidened(arg1);
+                // The compiler may cast an array of the widened type before accessing its elements.
+                Expression indexed = arg1;
+
+                while (indexed instanceof CastExpression && !isWidened(indexed)) {
+                    indexed = ((CastExpression) indexed).getExpression();
+                }
+
+                final boolean widened = isWidened(indexed);
+                final Expression source = indexed == arg1 ? null : indexed;
                 final IndexerExpression element = new IndexerExpression( byteCode.getOffset(), discardResultCast(arg1), arg2);
 
                 if (widened) {
-                    markWidened(element, element.getTarget());
+                    markWidened(element, source != null ? source : element.getTarget());
                 }
 
                 final TypeReference widenedArray = element.getTarget().getUserData(Keys.WIDENED_TYPE);
@@ -1992,21 +2000,30 @@ public class AstMethodBodyBuilder {
     }
 
     /**
-     * Tells whether an overload accepts the types of all the arguments.  Conversions of primitive types
-     * and parameters declared with type variables are not examined.
+     * Tells whether an overload accepts the types of all the arguments.  Parameters declared with type
+     * variables are not examined.
      */
     private static boolean isApplicable(final MethodReference candidate, final Map<Integer, TypeReference> argumentTypes) {
         return all(
             argumentTypes.entrySet(),
-            argument -> {
-                final TypeReference parameterType = candidate.getParameters().get(argument.getKey()).getParameterType();
-                final TypeReference argumentType = argument.getValue();
+            argument -> accepts(candidate.getParameters().get(argument.getKey()).getParameterType(), argument.getValue())
+        );
+    }
 
-                return parameterType.isGenericParameter() ||
-                       parameterType.isPrimitive() ||
-                       argumentType.isPrimitive() && MetadataHelper.getUnderlyingPrimitiveTypeOrSelf(parameterType).isPrimitive() ||
-                       MetadataHelper.isAssignableFrom(MetadataHelper.erase(parameterType), argumentType);
-            }
+    private static boolean accepts(final TypeReference parameterType, final TypeReference argumentType) {
+        if (parameterType.isGenericParameter()) {
+            return true;
+        }
+
+        if (parameterType.isPrimitive()) {
+            final TypeReference unboxed = MetadataHelper.getUnderlyingPrimitiveTypeOrSelf(argumentType);
+
+            return unboxed.isPrimitive() && MetadataHelper.isAssignableFrom(parameterType, unboxed);
+        }
+
+        return MetadataHelper.isAssignableFrom(
+            MetadataHelper.erase(parameterType),
+            argumentType.isPrimitive() ? MetadataHelper.getBoxedTypeOrSelf(argumentType) : argumentType
         );
     }
 

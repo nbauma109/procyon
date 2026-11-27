@@ -552,6 +552,42 @@ public class GenericsTests extends DecompilerTest {
     }
 
     @Test
+    public void testIndexedNarrowingAndPrimitiveOverloads() {
+        verifyOutput(
+            Indexed.class,
+            defaultSettings(),
+            "class Indexed {\n" +
+            "    <T extends CharSequence> Crate<T> crate(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    Crate<String> crate(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    String element(final String s) {\n" +
+            "        return ((String)this.crate((CharSequence)s).items[0]).substring(1);\n" +
+            "    }\n" +
+            "    <N extends Number> void flag(final N n, final int i) {\n" +
+            "    }\n" +
+            "    void flag(final Integer n, final boolean b) {\n" +
+            "    }\n" +
+            "    <N extends Number> void widen(final N n, final int i) {\n" +
+            "    }\n" +
+            "    void widen(final Integer n, final long i) {\n" +
+            "    }\n" +
+            "    <N extends Number> void box(final N n, final int i) {\n" +
+            "    }\n" +
+            "    void box(final Integer n, final Object o) {\n" +
+            "    }\n" +
+            "    void primitives(final Integer n) {\n" +
+            "        this.flag(n, 1);\n" +
+            "        this.widen((Number)n, 1);\n" +
+            "        this.box((Number)n, 1);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
     public void testNoCastToAnInaccessibleResultType() {
         verifyOutput(
             HiddenResult.class,
@@ -1118,6 +1154,7 @@ class Pairs {
 @SuppressWarnings("unused") // decompiler fixture
 class Crate<T> {
     T value;
+    T[] items;
 
     T[] array() {
         return null;
@@ -1216,6 +1253,45 @@ class Consumers {
 
     String array(final String s) {
         return ((String[]) this.crate((CharSequence) s).array())[0].substring(1);
+    }
+}
+
+@SuppressWarnings({ "unused", "unchecked" }) // decompiler fixture
+class Indexed {
+    <T extends CharSequence> Crate<T> crate(final T t) {
+        return null;
+    }
+
+    Crate<String> crate(final String s) {
+        return null;
+    }
+
+    String element(final String s) {
+        return ((String) this.crate((CharSequence) s).items[0]).substring(1);
+    }
+
+    <N extends Number> void flag(final N n, final int i) {
+    }
+
+    void flag(final Integer n, final boolean b) {
+    }
+
+    <N extends Number> void widen(final N n, final int i) {
+    }
+
+    void widen(final Integer n, final long i) {
+    }
+
+    <N extends Number> void box(final N n, final int i) {
+    }
+
+    void box(final Integer n, final Object o) {
+    }
+
+    void primitives(final Integer n) {
+        this.flag(n, 1);
+        this.widen((Number) n, 1);
+        this.box((Number) n, 1);
     }
 }
 
