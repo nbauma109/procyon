@@ -866,7 +866,8 @@ public class AstMethodBodyBuilder {
                             byteCode.getInferredType()
                         );
 
-                        typeArguments.putAll(thrownByDescriptor(targetMethod, byteCode.getInferredType()));
+                        addThrownTypeArguments(typeArguments,
+                                               thrownByDescriptor(targetMethod, byteCode.getInferredType()));
 
                         for (final String variable : typeArguments.keySet()) {
                             if (specializeReceiver(methodGroup, declaringType, typeArguments, variable)) {
@@ -889,7 +890,7 @@ public class AstMethodBodyBuilder {
                                                         byteCode.getInferredType())
                                 : new HashMap<String, TypeReference>();
 
-                            typeArguments.putAll(thrown);
+                            addThrownTypeArguments(typeArguments, thrown);
 
                             if (specializeReceiver(
                                     methodGroup,
@@ -1343,7 +1344,7 @@ public class AstMethodBodyBuilder {
                 if (!thrown.isEmpty()) {
                     final Map<String, TypeReference> typeArguments = argumentTypeArguments(methodReference, arguments);
 
-                    typeArguments.putAll(thrown);
+                    addThrownTypeArguments(typeArguments, thrown);
                     target = specializedReceiver(
                         discarded,
                         declaringType,
@@ -1867,6 +1868,11 @@ public class AstMethodBodyBuilder {
             mergeTypeArguments(arguments, determined);
         }
 
+        // A discarded result says nothing of the type of the variable.
+        if (implemented.getReturnType().getSimpleType() == JvmType.Void) {
+            return arguments;
+        }
+
         final Map<String, TypeReference> determined = new HashMap<>();
 
         addTypeArgument(determined, definition.getReturnType(), implemented.getReturnType());
@@ -1882,6 +1888,23 @@ public class AstMethodBodyBuilder {
         mergeTypeArguments(arguments, determined);
 
         return arguments;
+    }
+
+    /**
+     * Adds the exceptions for which thrown variables stand, unless the other types of a variable give it a
+     * narrower one, which is thrown just as well.
+     */
+    private static void addThrownTypeArguments(
+        final Map<String, TypeReference> arguments,
+        final Map<String, TypeReference> thrown) {
+
+        for (final Map.Entry<String, TypeReference> entry : thrown.entrySet()) {
+            final TypeReference current = arguments.get(entry.getKey());
+
+            if (current == null || !MetadataHelper.isAssignableFrom(entry.getValue(), current)) {
+                arguments.put(entry.getKey(), entry.getValue());
+            }
+        }
     }
 
     /** Adds type arguments, so that a variable given several accepts all of them. */
@@ -1948,7 +1971,7 @@ public class AstMethodBodyBuilder {
             }
 
             if (target.isGenericParameter()) {
-                arguments.put(target.getSimpleName(), element);
+                arguments.merge(target.getSimpleName(), element, AstMethodBodyBuilder::commonType);
             }
             else {
                 addNestedTypeArguments(arguments, target, element);
@@ -2126,20 +2149,16 @@ public class AstMethodBodyBuilder {
 
         // A single variable must stand for a type which leaves every handler reachable.
         if (variables.size() == 1 && checked.size() > 1) {
-            TypeReference covering = firstOrDefault(
+            // Only a type which is itself caught or declared may be thrown; without one covering every
+            // handler, other statements make the rest reachable.
+            final TypeReference covering = firstOrDefault(
                 candidates,
                 candidate -> all(checked, caught -> MetadataHelper.isAssignableFrom(candidate, caught))
             );
 
-            if (covering == null) {
-                covering = checked.get(0);
-
-                for (final TypeReference caught : checked) {
-                    covering = MetadataHelper.findCommonSuperType(covering, caught);
-                }
+            if (covering != null) {
+                candidates.add(0, covering);
             }
-
-            candidates.add(0, covering);
         }
 
         return assignExceptions(variables, candidates);

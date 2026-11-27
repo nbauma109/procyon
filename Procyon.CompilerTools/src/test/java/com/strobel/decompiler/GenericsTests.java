@@ -287,6 +287,32 @@ public class GenericsTests extends DecompilerTest {
                 "        Texts<RuntimeException> c = (Texts<RuntimeException>) (Texts) texts((Texts<?>) t);",
                 "        return c::get;",
                 "    }",
+                "    static class Keys<X, E extends Exception> { String get(java.util.Map<? extends X, ? extends X> map) throws E { return null; } }",
+                "    static class Keyring extends Keys<java.io.Serializable, java.io.IOException> { }",
+                "    <T extends Keys<?, ?>> T keys(T t) { return t; }",
+                "    Keyring keys(Keyring t) { return t; }",
+                "    interface Mapped2 { String run(java.util.Map<String, Integer> m) throws java.io.IOException; }",
+                "    Mapped2 doubled(Keyring t) {",
+                "        Keys<java.io.Serializable, java.io.IOException> m = (Keys<java.io.Serializable, java.io.IOException>) (Keys) keys((Keys<?, ?>) t);",
+                "        return m::get;",
+                "    }",
+                "    static class Raiser<E extends java.io.IOException> { E get() throws E { return null; } }",
+                "    static class Raised extends Raiser<java.io.IOException> { }",
+                "    <T extends Raiser<?>> T raiser(T t) { return t; }",
+                "    Raised raiser(Raised t) { return t; }",
+                "    interface Raise { java.io.IOException run() throws Exception; }",
+                "    Raise raising(Raised t) {",
+                "        Raiser<java.io.IOException> r = (Raiser<java.io.IOException>) (Raiser) raiser((Raiser<?>) t);",
+                "        return r::get;",
+                "    }",
+                "    static class Putter<X> { X put(X x) { return null; } String put(CharSequence x) { return null; } }",
+                "    static class Putting extends Putter<String> { }",
+                "    <T extends Putter<?>> T putter(T t) { return t; }",
+                "    Putting putter(Putting t) { return t; }",
+                "    java.util.function.Consumer<String> consumed(Putting t) {",
+                "        Putter<String> u = (Putter<String>) (Putter) putter((Putter<?>) t);",
+                "        return u::put;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -586,6 +612,33 @@ public class GenericsTests extends DecompilerTest {
             "    Neither neither(final Calmed calmed) {\n" +
             "        return ((Texts<RuntimeException>)(Texts)this.texts((Texts)calmed))::get;\n" +
             "    }\n" +
+            "    <T extends Keys<?, ?>> T keys(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Keyring keys(final Keyring keyring) {\n" +
+            "        return keyring;\n" +
+            "    }\n" +
+            "    Mapped2 doubled(final Keyring keyring) {\n" +
+            "        return ((Keys<Serializable, IOException>)(Keys)this.keys((Keys)keyring))::get;\n" +
+            "    }\n" +
+            "    <T extends Raiser<?>> T raiser(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Raised raiser(final Raised raised) {\n" +
+            "        return raised;\n" +
+            "    }\n" +
+            "    Raise raising(final Raised raised) {\n" +
+            "        return ((Raiser<IOException>)(Raiser)this.raiser((Raiser)raised))::get;\n" +
+            "    }\n" +
+            "    <T extends Putter<?>> T putter(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Putting putter(final Putting putting) {\n" +
+            "        return putting;\n" +
+            "    }\n" +
+            "    Consumer<String> consumed(final Putting putting) {\n" +
+            "        return ((Putter<String>)(Putter)this.putter((Putter)putting))::put;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -614,6 +667,36 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    static class Putting extends Putter<String> {\n" +
+            "    }\n" +
+            "    static class Putter<X> {\n" +
+            "        X put(final X x) {\n" +
+            "            return null;\n" +
+            "        }\n" +
+            "        String put(final CharSequence charSequence) {\n" +
+            "            return null;\n" +
+            "        }\n" +
+            "    }\n" +
+            "    interface Raise {\n" +
+            "        IOException run() throws Exception;\n" +
+            "    }\n" +
+            "    static class Raised extends Raiser<IOException> {\n" +
+            "    }\n" +
+            "    static class Raiser<E extends IOException> {\n" +
+            "        E get() throws E, IOException {\n" +
+            "            return null;\n" +
+            "        }\n" +
+            "    }\n" +
+            "    interface Mapped2 {\n" +
+            "        String run(final Map<String, Integer> p0) throws IOException;\n" +
+            "    }\n" +
+            "    static class Keyring extends Keys<Serializable, IOException> {\n" +
+            "    }\n" +
+            "    static class Keys<X, E extends Exception> {\n" +
+            "        String get(final Map<? extends X, ? extends X> map) throws E, Exception {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    interface Neither extends Io, Sql {\n" +
             "    }\n" +
