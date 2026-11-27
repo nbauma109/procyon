@@ -229,6 +229,11 @@ public class GenericsTests extends DecompilerTest {
                 "        }",
                 "        return r;",
                 "    }",
+                "    static class Ints extends java.util.ArrayList<Integer> { private static final long serialVersionUID = 1L; }",
+                "    java.util.function.ToIntFunction<Ints> inherited(Takes t) {",
+                "        Taking<Integer, Integer> g2 = (Taking<Integer, Integer>) (Taking) taking((Taking<?, ?>) t);",
+                "        return g2::get;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -480,6 +485,9 @@ public class GenericsTests extends DecompilerTest {
             "        }\n" +
             "        return string;\n" +
             "    }\n" +
+            "    ToIntFunction<Ints> inherited(final Takes takes) {\n" +
+            "        return ((Taking<Integer, Integer>)(Taking)this.taking((Taking)takes))::get;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -508,6 +516,9 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    static class Ints extends ArrayList<Integer> {\n" +
+            "        private static final long serialVersionUID = 1L;\n" +
             "    }\n" +
             "    static class Earlier extends Early<String> {\n" +
             "    }\n" +
@@ -1476,6 +1487,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void listed(final Integer e, final List<List<String>> a, final List<Integer> b) {\n" +
             "        this.listsOf(e, a, b);\n" +
+            "    }\n" +
+            "    <E extends Number> void chain(final E e, final List<String> a, final Integer b) {\n" +
+            "    }\n" +
+            "    <N, M extends N> void chain(final Integer e, final Collection<N> a, final M b) {\n" +
+            "    }\n" +
+            "    void chained(final Integer e, final List<String> a) {\n" +
+            "        this.chain(e, a, 1);\n" +
             "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
@@ -2733,6 +2751,16 @@ class Shared {
 
     void listed(final Integer e, final List<List<String>> a, final List<Integer> b) {
         this.listsOf(e, a, b);
+    }
+
+    <E extends Number> void chain(final E e, final List<String> a, final Integer b) {
+    }
+
+    <N, M extends N> void chain(final Integer e, final Collection<N> a, final M b) {
+    }
+
+    void chained(final Integer e, final List<String> a) {
+        this.chain(e, a, 1);
     }
 
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {

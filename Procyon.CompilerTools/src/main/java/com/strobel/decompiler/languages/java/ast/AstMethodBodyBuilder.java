@@ -1880,12 +1880,20 @@ public class AstMethodBodyBuilder {
         final TypeReference declared,
         final TypeReference actual) {
 
-        if (!(declared instanceof IGenericInstance) || !(actual instanceof IGenericInstance)) {
+        if (!(declared instanceof IGenericInstance)) {
+            return;
+        }
+
+        // The actual type may inherit its type arguments from a supertype.
+        final TypeDefinition definition = declared.resolve();
+        final TypeReference viewed = definition != null ? MetadataHelper.asSuper(definition, actual) : null;
+
+        if (!(viewed instanceof IGenericInstance)) {
             return;
         }
 
         final List<TypeReference> targets = ((IGenericInstance) declared).getTypeArguments();
-        final List<TypeReference> sources = ((IGenericInstance) actual).getTypeArguments();
+        final List<TypeReference> sources = ((IGenericInstance) viewed).getTypeArguments();
 
         for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
             final TypeReference source = sources.get(i);
@@ -3199,7 +3207,7 @@ public class AstMethodBodyBuilder {
             }
         }
 
-        if (!satisfiesBounds(candidate.resolve(), inferred)) {
+        if (!satisfiesBounds(candidate.resolve(), inferred, bindings)) {
             return false;
         }
 
@@ -3339,7 +3347,11 @@ public class AstMethodBodyBuilder {
      * Tells whether the types for which type variables stand are within their parameterized bounds,
      * which may depend on those very types.
      */
-    private static boolean satisfiesBounds(final MethodDefinition method, final Map<String, TypeReference> bindings) {
+    private static boolean satisfiesBounds(
+        final MethodDefinition method,
+        final Map<String, TypeReference> bindings,
+        final Map<String, TypeReference> exact) {
+
         if (method == null) {
             return true;
         }
@@ -3362,6 +3374,14 @@ public class AstMethodBodyBuilder {
             }
 
             for (final TypeReference component : typesOf(variable.getExtendsBound())) {
+                // A variable bounding this one only has a fixed type when it was bound exactly.
+                final TypeReference other = component.isGenericParameter() ? exact.get(component.getSimpleName())
+                                                                           : null;
+
+                if (other != null && !accepts(other, substitution.getValue())) {
+                    return false;
+                }
+
                 if (!(component instanceof IGenericInstance)) {
                     continue;
                 }
