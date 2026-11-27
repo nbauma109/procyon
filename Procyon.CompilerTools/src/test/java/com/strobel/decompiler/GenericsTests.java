@@ -133,6 +133,15 @@ public class GenericsTests extends DecompilerTest {
                 "        Mapping<Integer, Integer> o = (Mapping<Integer, Integer>) (Mapping) mapping((Mapping<?, ?>) m);",
                 "        return o::get;",
                 "    }",
+                "    static class Giving<X, E extends Exception> { X get() throws E { return null; } }",
+                "    static class Gives extends Giving<String, java.io.IOException> { }",
+                "    <T extends Giving<?, ?>> T giving(T t) { return t; }",
+                "    Gives giving(Gives g) { return g; }",
+                "    interface Source { String run() throws java.io.IOException; }",
+                "    Source sourced(Gives a) {",
+                "        Giving<String, java.io.IOException> v = (Giving<String, java.io.IOException>) (Giving) giving((Giving<?, ?>) a);",
+                "        return v::get;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -282,6 +291,15 @@ public class GenericsTests extends DecompilerTest {
             "    IntUnaryOperator mappedBy(final Mapped mapped) {\n" +
             "        return ((Mapping<Integer, Integer>)(Mapping)this.mapping((Mapping)mapped))::get;\n" +
             "    }\n" +
+            "    <T extends Giving<?, ?>> T giving(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Gives giving(final Gives gives) {\n" +
+            "        return gives;\n" +
+            "    }\n" +
+            "    Source sourced(final Gives gives) {\n" +
+            "        return ((Giving<String, IOException>)(Giving)this.giving((Giving)gives))::get;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -310,6 +328,16 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    interface Source {\n" +
+            "        String run() throws IOException;\n" +
+            "    }\n" +
+            "    static class Gives extends Giving<String, IOException> {\n" +
+            "    }\n" +
+            "    static class Giving<X, E extends Exception> {\n" +
+            "        X get() throws E, Exception {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    static class Mapped extends Mapping<Integer, Integer> {\n" +
             "    }\n" +
@@ -1144,6 +1172,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void wild(final Integer e, final List<String> a, final List<Integer> b) {\n" +
             "        this.mixed(e, a, b);\n" +
+            "    }\n" +
+            "    <E extends Number> void filled(final E e, final List<String> list, final Integer[] array) {\n" +
+            "    }\n" +
+            "    <N> void filled(final Integer e, final Collection<N> list, final N[] array) {\n" +
+            "    }\n" +
+            "    void arrayed(final Integer e, final List<String> list, final Integer[] array) {\n" +
+            "        this.filled(e, list, array);\n" +
             "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
@@ -2253,6 +2288,16 @@ class Shared {
 
     void wild(final Integer e, final List<String> a, final List<Integer> b) {
         this.mixed(e, a, b);
+    }
+
+    <E extends Number> void filled(final E e, final List<String> list, final Integer[] array) {
+    }
+
+    <N> void filled(final Integer e, final Collection<N> list, final N[] array) {
+    }
+
+    void arrayed(final Integer e, final List<String> list, final Integer[] array) {
+        this.filled(e, list, array);
     }
 
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {

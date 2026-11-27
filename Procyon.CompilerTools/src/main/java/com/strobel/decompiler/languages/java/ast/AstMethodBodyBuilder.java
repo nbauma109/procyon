@@ -836,14 +836,24 @@ public class AstMethodBodyBuilder {
                     if (hasInstanceArgument && isWidened(arg1)) {
                         final TypeReference thrown = thrownByDescriptor(targetMethod, byteCode.getInferredType());
 
-                        if (thrown != null &&
-                            specializeReceiver(
-                                methodGroup,
-                                declaringType,
-                                Collections.singletonMap(thrownClassVariable(targetMethod), thrown),
-                                thrownClassVariable(targetMethod)
-                            )) {
-                            return methodGroup;
+                        if (thrown != null) {
+                            final Object signature = callSite.getBootstrapArguments().get(2);
+                            final Map<String, TypeReference> typeArguments =
+                                signature instanceof IMethodSignature
+                                ? receiverTypeArguments(targetMethod, (IMethodSignature) signature)
+                                : new HashMap<String, TypeReference>();
+
+                            typeArguments.put(thrownClassVariable(targetMethod), thrown);
+
+                            if (specializeReceiver(
+                                    methodGroup,
+                                    declaringType,
+                                    typeArguments,
+                                    thrownClassVariable(targetMethod)
+                                )) {
+
+                                return methodGroup;
+                            }
                         }
                     }
 
@@ -1825,6 +1835,7 @@ public class AstMethodBodyBuilder {
 
         raw.putUserData(Keys.RESULT_CAST, true);
         cast.putUserData(Keys.RESULT_CAST, true);
+        cast.putUserData(Keys.WIDENED_BOUNDS, receiver.getUserData(Keys.WIDENED_BOUNDS));
         return cast;
     }
 
@@ -2751,7 +2762,20 @@ public class AstMethodBodyBuilder {
         final List<Map.Entry<GenericParameter, TypeReference>> wildcards = new ArrayList<>();
 
         for (final Map.Entry<Integer, TypeReference> argument : argumentTypes.entrySet()) {
-            final TypeReference parameterType = candidate.getParameters().get(argument.getKey()).getParameterType();
+            TypeReference parameterType = candidate.getParameters().get(argument.getKey()).getParameterType();
+            TypeReference argumentType = argument.getValue();
+
+            final boolean array = parameterType.isArray();
+
+            while (parameterType.isArray() && argumentType.isArray()) {
+                parameterType = parameterType.getElementType();
+                argumentType = argumentType.getElementType();
+            }
+
+            // The elements of an array may be of any subtype of the type for which a variable stands.
+            if (array && parameterType.isGenericParameter() && !argumentType.isPrimitive()) {
+                wildcards.add(new AbstractMap.SimpleEntry<>((GenericParameter) parameterType, argumentType));
+            }
 
             if (!(parameterType instanceof IGenericInstance)) {
                 continue;
@@ -2759,7 +2783,7 @@ public class AstMethodBodyBuilder {
 
             final TypeDefinition definition = parameterType.resolve();
             final TypeReference asParameterType = definition != null
-                                                  ? MetadataHelper.asSuper(definition, argument.getValue())
+                                                  ? MetadataHelper.asSuper(definition, argumentType)
                                                   : null;
 
             if (!(asParameterType instanceof IGenericInstance)) {
