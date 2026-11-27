@@ -1459,7 +1459,7 @@ public class AstMethodBodyBuilder {
                 arguments
             );
 
-            if (target.getUserData(Keys.RESULT_CAST) != null && takesClassTypeVariables(methodReference)) {
+            if (isRawCast(target) && takesClassTypeVariables(methodReference)) {
                 keepMemberSelection(methodReference, adjustedArguments);
             }
 
@@ -1970,6 +1970,21 @@ public class AstMethodBodyBuilder {
             TypeReference target = targets.get(i);
             TypeReference element = source;
 
+            // A lower-bounded wildcard only limits how general the type of its variable may be.
+            if (target.isWildcardType() && target.hasSuperBound() && target.getSuperBound().isGenericParameter()) {
+                final TypeReference limit = !element.isWildcardType()
+                                            ? element
+                                            : element.hasSuperBound() ? element.getSuperBound() : null;
+
+                if (limit != null && !limit.isWildcardType() && !limit.isGenericParameter()) {
+                    arguments.merge(target.getSuperBound().getSimpleName(),
+                                    com.strobel.assembler.metadata.WildcardType.makeExtends(limit),
+                                    AstMethodBodyBuilder::commonType);
+                }
+
+                continue;
+            }
+
             // The bounds of matching wildcards tell as much as the types themselves.
             if (element.isWildcardType() && target.isWildcardType() &&
                 element.hasSuperBound() == target.hasSuperBound() &&
@@ -2047,14 +2062,52 @@ public class AstMethodBodyBuilder {
         return typeArguments;
     }
 
-    /** Returns a type which accepts the values of both types. */
+    /**
+     * Returns a type which accepts the values of both types.  An upper-bounded wildcard stands here for a
+     * limit: any exact type takes precedence over it.
+     */
     private static TypeReference commonType(final TypeReference first, final TypeReference second) {
+        if (first.isWildcardType() || second.isWildcardType()) {
+            if (!first.isWildcardType()) {
+                return first;
+            }
+
+            if (!second.isWildcardType()) {
+                return second;
+            }
+
+            return narrowestLimit(first, second);
+        }
+
         if (MetadataHelper.isAssignableFrom(first, second)) {
             return first;
         }
 
         return MetadataHelper.isAssignableFrom(second, first) ? second
                                                               : MetadataHelper.findCommonSuperType(first, second);
+    }
+
+    /** Returns the limit which satisfies both limits. */
+    private static TypeReference narrowestLimit(final TypeReference first, final TypeReference second) {
+        final TypeReference one = first.getExtendsBound();
+        final TypeReference other = second.getExtendsBound();
+
+        if (MetadataHelper.isAssignableFrom(other, one)) {
+            return first;
+        }
+
+        if (MetadataHelper.isAssignableFrom(one, other)) {
+            return second;
+        }
+
+        // Unrelated interfaces of the JDK are commonly both implemented by strings.
+        final TypeDefinition string = CommonTypeReferences.String.resolve();
+
+        return string != null &&
+               MetadataHelper.isAssignableFrom(one, string) &&
+               MetadataHelper.isAssignableFrom(other, string)
+               ? com.strobel.assembler.metadata.WildcardType.makeExtends(string)
+               : first;
     }
 
     private boolean specializeReceiver(
@@ -2099,7 +2152,12 @@ public class AstMethodBodyBuilder {
         boolean specialized = false;
 
         for (final GenericParameter variable : definition.getGenericParameters()) {
-            final TypeReference typeArgument = arguments.get(variable.getSimpleName());
+            TypeReference typeArgument = arguments.get(variable.getSimpleName());
+
+            if (typeArgument != null && typeArgument.isWildcardType()) {
+                // Nothing but a limit is known, which itself will do.
+                typeArgument = typeArgument.getExtendsBound();
+            }
 
             if (typeArgument != null && !typeArgument.isPrimitive() && accepts(variable, typeArgument)) {
                 typeArguments.add(typeArgument);
@@ -2580,6 +2638,13 @@ public class AstMethodBodyBuilder {
         return rawReceiver(receiver, field.getDeclaringType());
     }
 
+    /** Tells whether a receiver was cast to a raw type, rather than specialized. */
+    private static boolean isRawCast(final Expression receiver) {
+        return receiver.getUserData(Keys.RESULT_CAST) != null &&
+               receiver instanceof CastExpression &&
+               ((CastExpression) receiver).getType().getChildrenByRole(Roles.TYPE_ARGUMENT).isEmpty();
+    }
+
     private Expression rawReceiver(final Expression receiver, final TypeReference declaringType) {
         if (receiver.getUserData(Keys.RESULT_CAST) != null) {
             receiver.putUserData(Keys.WIDENED_BOUNDS, Collections.<TypeReference>emptyList());
@@ -2654,6 +2719,19 @@ public class AstMethodBodyBuilder {
 
         for (final TypeDefinition definition : classes) {
             supertypes.addAll(definition.getExplicitInterfaces());
+        }
+
+        // Interfaces may in turn be reached through others; the list grows as it is walked.
+        for (int i = 0; i < supertypes.size(); i++) {
+            final TypeDefinition definition = supertypes.get(i).resolve();
+
+            if (definition != null && definition.isInterface()) {
+                for (final TypeReference superInterface : definition.getExplicitInterfaces()) {
+                    if (!supertypes.contains(superInterface)) {
+                        supertypes.add(superInterface);
+                    }
+                }
+            }
         }
 
         for (final TypeReference supertype : supertypes) {
@@ -3361,7 +3439,12 @@ public class AstMethodBodyBuilder {
         // Nor does anything else than a lower bound for a variable which only bounds wildcards.
         for (final Map.Entry<GenericParameter, TypeReference> wildcard : wildcards) {
             if (!wildcard.getValue().isWildcardType()) {
-                inferred.putIfAbsent(wildcard.getKey().getSimpleName(), wildcard.getValue());
+                final String name = wildcard.getKey().getSimpleName();
+
+                // Several lower bounds are only satisfied by a supertype of them all.
+                if (!bindings.containsKey(name)) {
+                    inferred.merge(name, wildcard.getValue(), AstMethodBodyBuilder::commonType);
+                }
             }
         }
 

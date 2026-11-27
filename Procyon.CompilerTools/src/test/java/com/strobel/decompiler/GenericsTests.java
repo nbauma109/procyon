@@ -325,6 +325,15 @@ public class GenericsTests extends DecompilerTest {
                 "        Results<String, java.io.IOException> v = (Results<String, java.io.IOException>) (Results) results((Results<?, ?>) t);",
                 "        return v::get;",
                 "    }",
+                "    static class Sink<X, E extends Exception> { String get(java.util.List<? super X> a, java.util.List<? super X> b) throws E { return null; } }",
+                "    static class Sinking extends Sink<String, java.io.IOException> { }",
+                "    <T extends Sink<?, ?>> T sink(T t) { return t; }",
+                "    Sinking sink(Sinking t) { return t; }",
+                "    interface Drain { String run(java.util.List<CharSequence> a, java.util.List<java.io.Serializable> b) throws java.io.IOException; }",
+                "    Drain drain(Sinking t) {",
+                "        Sink<String, java.io.IOException> k = (Sink<String, java.io.IOException>) (Sink) sink((Sink<?, ?>) t);",
+                "        return k::get;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -657,6 +666,15 @@ public class GenericsTests extends DecompilerTest {
             "    Covariant covariant(final Resulting resulting) {\n" +
             "        return ((Results<String, IOException>)(Results)this.results((Results)resulting))::get;\n" +
             "    }\n" +
+            "    <T extends Sink<?, ?>> T sink(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Sinking sink(final Sinking sinking) {\n" +
+            "        return sinking;\n" +
+            "    }\n" +
+            "    Drain drain(final Sinking sinking) {\n" +
+            "        return ((Sink<String, IOException>)(Sink)this.sink((Sink)sinking))::get;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -685,6 +703,16 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    interface Drain {\n" +
+            "        String run(final List<CharSequence> p0, final List<Serializable> p1) throws IOException;\n" +
+            "    }\n" +
+            "    static class Sinking extends Sink<String, IOException> {\n" +
+            "    }\n" +
+            "    static class Sink<X, E extends Exception> {\n" +
+            "        String get(final List<? super X> list, final List<? super X> list2) throws E, Exception {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    interface Covariant extends Loose, Tight {\n" +
             "    }\n" +
@@ -1778,6 +1806,13 @@ public class GenericsTests extends DecompilerTest {
             "    void heaped(final Integer e, final List<String[]> a, final List<Integer> b) {\n" +
             "        this.heaps(e, a, b);\n" +
             "    }\n" +
+            "    <E extends Number> void ordered(final E e, final List<String> a, final List<Integer> b) {\n" +
+            "    }\n" +
+            "    <N extends Comparable<N>> void ordered(final Integer e, final Collection<? extends N> a, final Collection<? extends N> b) {\n" +
+            "    }\n" +
+            "    void order(final Integer e, final List<String> a, final List<Integer> b) {\n" +
+            "        this.ordered(e, a, b);\n" +
+            "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
             "    <N> void add(final Integer e, final Collection<N> list, final N n) {\n" +
@@ -1958,6 +1993,15 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void unchecked(final Calm calm) {\n" +
             "        ((Hazard<RuntimeException>)(Hazard)this.quiet((Hazard)calm)).act();\n" +
+            "    }\n" +
+            "    <T extends Poster<?, ?>> T poster(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Posting poster(final Posting posting) {\n" +
+            "        return posting;\n" +
+            "    }\n" +
+            "    void posted(final Posting posting, final String s) throws IOException {\n" +
+            "        ((Poster<String, IOException>)(Poster)this.poster((Poster)posting)).post(s);\n" +
             "    }\n" +
             "    void caught(final Risk risk) {\n" +
             "        try {\n" +
@@ -3074,6 +3118,16 @@ class Shared {
         this.heaps(e, a, b);
     }
 
+    <E extends Number> void ordered(final E e, final List<String> a, final List<Integer> b) {
+    }
+
+    <N extends Comparable<N>> void ordered(final Integer e, final Collection<? extends N> a, final Collection<? extends N> b) {
+    }
+
+    void order(final Integer e, final List<String> a, final List<Integer> b) {
+        this.ordered(e, a, b);
+    }
+
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {
     }
 
@@ -3292,6 +3346,18 @@ class Writes {
         ((Hazard<RuntimeException>) (Hazard) this.quiet((Hazard<?>) calm)).act();
     }
 
+    <T extends Poster<?, ?>> T poster(final T t) {
+        return t;
+    }
+
+    Posting poster(final Posting posting) {
+        return posting;
+    }
+
+    void posted(final Posting posting, final String s) throws IOException {
+        ((Poster<String, IOException>) (Poster) this.poster((Poster<?, ?>) posting)).post(s);
+    }
+
     void caught(final Risk risk) {
         try {
             ((Hazard<IOException>) (Hazard) this.hazard((Hazard<?>) risk)).act();
@@ -3319,6 +3385,17 @@ abstract class Wide extends Hazard<Exception> {
 
 @SuppressWarnings("unused") // decompiler fixture
 abstract class Calm extends Hazard<RuntimeException> {
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+abstract class Poster<X, E extends Exception> {
+    abstract void post(X x) throws E;
+
+    abstract void post(CharSequence x);
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+abstract class Posting extends Poster<String, IOException> {
 }
 
 @SuppressWarnings("unused") // decompiler fixture
