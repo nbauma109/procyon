@@ -1877,15 +1877,16 @@ public class AstMethodBodyBuilder {
 
         addTypeArgument(determined, definition.getReturnType(), implemented.getReturnType());
 
-        final TypeReference result = descriptor != null
-                                     ? typeArgumentIn(descriptor.getReturnType(), descriptor, functionType)
-                                     : null;
+        final TypeReference result = resultOf(functionType);
 
         if (result != null) {
             addNestedTypeArguments(determined, definition.getReturnType(), result);
         }
 
-        mergeTypeArguments(arguments, determined);
+        // A result only bounds the variables which the parameters already determine.
+        for (final Map.Entry<String, TypeReference> entry : determined.entrySet()) {
+            arguments.putIfAbsent(entry.getKey(), entry.getValue());
+        }
 
         return arguments;
     }
@@ -1905,6 +1906,27 @@ public class AstMethodBodyBuilder {
                 arguments.put(entry.getKey(), entry.getValue());
             }
         }
+    }
+
+    /**
+     * Returns the result type of a functional interface: where several declarations are inherited, the
+     * one which all the others accept.
+     */
+    private static TypeReference resultOf(final TypeReference functionType) {
+        final List<TypeReference> results = new ArrayList<>();
+
+        for (final MethodDefinition descriptor : descriptorsOf(functionType != null ? functionType.resolve() : null)) {
+            final TypeReference result = typeArgumentIn(descriptor.getReturnType(), descriptor, functionType);
+
+            if (result != null) {
+                results.add(result);
+            }
+        }
+
+        final TypeReference narrowest = firstOrDefault(results,
+                                                       result -> all(results, other -> accepts(other, result)));
+
+        return narrowest != null ? narrowest : firstOrDefault(results);
     }
 
     /** Adds type arguments, so that a variable given several accepts all of them. */

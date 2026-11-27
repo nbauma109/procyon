@@ -313,6 +313,18 @@ public class GenericsTests extends DecompilerTest {
                 "        Putter<String> u = (Putter<String>) (Putter) putter((Putter<?>) t);",
                 "        return u::put;",
                 "    }",
+                "    interface Echo { CharSequence run(String s); }",
+                "    Echo echoed(Putting t) {",
+                "        Putter<String> e = (Putter<String>) (Putter) putter((Putter<?>) t);",
+                "        return e::put;",
+                "    }",
+                "    interface Loose { java.util.List<? extends CharSequence> run() throws java.io.IOException; }",
+                "    interface Tight { java.util.List<String> run() throws java.io.IOException; }",
+                "    interface Covariant extends Loose, Tight { }",
+                "    Covariant covariant(Resulting t) {",
+                "        Results<String, java.io.IOException> v = (Results<String, java.io.IOException>) (Results) results((Results<?, ?>) t);",
+                "        return v::get;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -639,6 +651,12 @@ public class GenericsTests extends DecompilerTest {
             "    Consumer<String> consumed(final Putting putting) {\n" +
             "        return ((Putter<String>)(Putter)this.putter((Putter)putting))::put;\n" +
             "    }\n" +
+            "    Echo echoed(final Putting putting) {\n" +
+            "        return ((Putter<String>)(Putter)this.putter((Putter)putting))::put;\n" +
+            "    }\n" +
+            "    Covariant covariant(final Resulting resulting) {\n" +
+            "        return ((Results<String, IOException>)(Results)this.results((Results)resulting))::get;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -667,6 +685,17 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    interface Covariant extends Loose, Tight {\n" +
+            "    }\n" +
+            "    interface Loose {\n" +
+            "        List<? extends CharSequence> run() throws IOException;\n" +
+            "    }\n" +
+            "    interface Tight {\n" +
+            "        List<String> run() throws IOException;\n" +
+            "    }\n" +
+            "    interface Echo {\n" +
+            "        CharSequence run(final String p0);\n" +
             "    }\n" +
             "    static class Putting extends Putter<String> {\n" +
             "    }\n" +
