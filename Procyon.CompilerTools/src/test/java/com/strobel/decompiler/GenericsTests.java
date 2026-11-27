@@ -99,6 +99,15 @@ public class GenericsTests extends DecompilerTest {
                 "    Whole whole(Whole w) { return w; }",
                 "    static class Counted2<X> { X get() { return null; } }",
                 "    static class Whole extends Counted2<Integer> { }",
+                "    static class Acting<X extends Exception> { void act() throws X { } }",
+                "    static class Acts extends Acting<java.io.IOException> { }",
+                "    <T extends Acting<?>> T acting(T t) { return t; }",
+                "    Acts acting(Acts a) { return a; }",
+                "    interface Action { void run() throws java.io.IOException; }",
+                "    Action deferred(Acts a) {",
+                "        Acting<java.io.IOException> d = (Acting<java.io.IOException>) (Acting) acting((Acting<?>) a);",
+                "        return d::act;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -214,6 +223,15 @@ public class GenericsTests extends DecompilerTest {
             "    Whole whole(final Whole whole) {\n" +
             "        return whole;\n" +
             "    }\n" +
+            "    <T extends Acting<?>> T acting(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Acts acting(final Acts acts) {\n" +
+            "        return acts;\n" +
+            "    }\n" +
+            "    Action deferred(final Acts acts) {\n" +
+            "        return ((Acting<IOException>)(Acting)this.acting((Acting)acts))::act;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -242,6 +260,15 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    interface Action {\n" +
+            "        void run() throws IOException;\n" +
+            "    }\n" +
+            "    static class Acts extends Acting<IOException> {\n" +
+            "    }\n" +
+            "    static class Acting<X extends Exception> {\n" +
+            "        void act() throws X, Exception {\n" +
+            "        }\n" +
             "    }\n" +
             "    static class Whole extends Counted2<Integer> {\n" +
             "    }\n" +
@@ -1020,6 +1047,13 @@ public class GenericsTests extends DecompilerTest {
             "    <E extends Number> void toss(final E e, final List<String> a, final List<Integer> b) {\n" +
             "    }\n" +
             "    <N> void toss(final Integer e, final Collection<N> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    <E extends Number> void deep(final E e, final List<List<String>> lists) {\n" +
+            "    }\n" +
+            "    <N extends Number> void deep(final Integer e, final Collection<List<N>> lists) {\n" +
+            "    }\n" +
+            "    void nested(final Integer e, final List<List<String>> lists) {\n" +
+            "        this.deep(e, lists);\n" +
             "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
@@ -2086,6 +2120,16 @@ class Shared {
     }
 
     <N> void toss(final Integer e, final Collection<N> a, final Collection<N> b) {
+    }
+
+    <E extends Number> void deep(final E e, final List<List<String>> lists) {
+    }
+
+    <N extends Number> void deep(final Integer e, final Collection<List<N>> lists) {
+    }
+
+    void nested(final Integer e, final List<List<String>> lists) {
+        this.deep(e, lists);
     }
 
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {

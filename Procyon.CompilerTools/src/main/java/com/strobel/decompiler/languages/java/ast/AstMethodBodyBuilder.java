@@ -832,6 +832,15 @@ public class AstMethodBodyBuilder {
                         methodGroup.putUserData(Keys.TYPE_REFERENCE, byteCode.getInferredType());
                     }
 
+                    // A widened receiver would throw the bound of its type variable.
+                    if (hasInstanceArgument && isWidened(arg1)) {
+                        final TypeReference thrown = thrownByDescriptor(targetMethod, byteCode.getInferredType());
+
+                        if (thrown != null && specializeReceiver(methodGroup, declaringType, thrown)) {
+                            return methodGroup;
+                        }
+                    }
+
                     // The result of a member of a widened receiver only fits the raw functional interface.
                     TypeReference returned = declaredType(targetMethod);
 
@@ -1778,6 +1787,56 @@ public class AstMethodBodyBuilder {
                 }
 
                 return declared.size() == 1 ? declared.get(0) : null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Returns the exception of a functional interface which the type variable thrown by a referenced
+     * method may stand for, or {@code null}.
+     */
+    private static TypeReference thrownByDescriptor(final MethodReference method, final TypeReference functionType) {
+        final MethodDefinition definition = method.resolve();
+        final MethodDefinition descriptor = functionType != null ? descriptorOf(functionType.resolve()) : null;
+
+        if (definition == null || descriptor == null) {
+            return null;
+        }
+
+        for (final GenericParameter variable : definition.getDeclaringType().getGenericParameters()) {
+            if (any(definition.getThrownTypes(), t -> t.isGenericParameter() &&
+                                                      t.getSimpleName().equals(variable.getSimpleName()))) {
+
+                for (final TypeReference thrown : descriptor.getThrownTypes()) {
+                    if (!thrown.isGenericParameter() && accepts(variable, thrown)) {
+                        return thrown;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /** Returns the abstract method of a functional interface, which it may inherit. */
+    private static MethodDefinition descriptorOf(final TypeDefinition type) {
+        if (type == null) {
+            return null;
+        }
+
+        for (final MethodDefinition method : type.getDeclaredMethods()) {
+            if (method.isAbstract()) {
+                return method;
+            }
+        }
+
+        for (final TypeReference superInterface : type.getExplicitInterfaces()) {
+            final MethodDefinition inherited = descriptorOf(superInterface.resolve());
+
+            if (inherited != null) {
+                return inherited;
             }
         }
 
@@ -2746,6 +2805,20 @@ public class AstMethodBodyBuilder {
                                                                                                 : null;
 
                 if (upper == null || !accepts(target.getExtendsBound(), upper)) {
+                    return false;
+                }
+            }
+
+            if (target instanceof IGenericInstance && target.containsGenericParameters() &&
+                !sources.get(i).isWildcardType()) {
+
+                // A nested type must be of the same class, with type arguments it allows in turn.
+                final TypeReference source = sources.get(i);
+
+                if (!(source instanceof IGenericInstance) ||
+                    !MetadataHelper.isSameType(MetadataHelper.erase(target), MetadataHelper.erase(source)) ||
+                    !containsTypeArguments((IGenericInstance) target, (IGenericInstance) source)) {
+
                     return false;
                 }
             }
