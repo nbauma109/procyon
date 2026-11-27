@@ -676,6 +676,46 @@ public class GenericsTests extends DecompilerTest {
     }
 
     @Test
+    public void testWildcardsScalarResultsConditionalsAndCoordinatedCasts() {
+        verifyOutput(
+            Coordinated.class,
+            defaultSettings(),
+            "class Coordinated {\n" +
+            "    <T extends Coffer<?>> T take(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Casket take(final Casket casket) {\n" +
+            "        return casket;\n" +
+            "    }\n" +
+            "    String scalar(final Casket casket) {\n" +
+            "        return ((String)this.take((Coffer)casket).get()).substring(1);\n" +
+            "    }\n" +
+            "    <T extends CharSequence> List<T> wrap(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<String> wrap(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<String> conditional(final boolean flag, final String s, final List<String> other) {\n" +
+            "        return flag ? ((List)this.wrap((CharSequence)s).subList(0, 1)) : other;\n" +
+            "    }\n" +
+            "    <N extends Number> void bounded(final N n, final List<? extends Number> list) {\n" +
+            "    }\n" +
+            "    void bounded(final Integer n, final Collection<Integer> list) {\n" +
+            "    }\n" +
+            "    <E extends Exception, R> void toss(final E e, final R r) throws E, Exception {\n" +
+            "    }\n" +
+            "    void toss(final IOException e, final String s) {\n" +
+            "    }\n" +
+            "    void direct(final Integer n, final List<? extends Number> list, final IOException e, final String s) throws IOException {\n" +
+            "        this.bounded(n, list);\n" +
+            "        this.toss(e, (Object)s);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
     public void testNoCastToAnInaccessibleResultType() {
         verifyOutput(
             HiddenResult.class,
@@ -1466,6 +1506,61 @@ class RestrictedHeir extends OverloadsElsewhere {
     void through(final OverloadsElsewhere other, final String s) {
         other.send(s);
         this.send((CharSequence) s);
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class Coffer<X> {
+    X get() {
+        return null;
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class Casket extends Coffer<String> {
+}
+
+@SuppressWarnings({ "unused", "unchecked" }) // decompiler fixture
+class Coordinated {
+    <T extends Coffer<?>> T take(final T t) {
+        return t;
+    }
+
+    Casket take(final Casket casket) {
+        return casket;
+    }
+
+    String scalar(final Casket casket) {
+        return ((String) this.take((Coffer<?>) casket).get()).substring(1);
+    }
+
+    <T extends CharSequence> List<T> wrap(final T t) {
+        return null;
+    }
+
+    List<String> wrap(final String s) {
+        return null;
+    }
+
+    List<String> conditional(final boolean flag, final String s, final List<String> other) {
+        return flag ? (List) this.wrap((CharSequence) s).subList(0, 1) : other;
+    }
+
+    <N extends Number> void bounded(final N n, final List<? extends Number> list) {
+    }
+
+    void bounded(final Integer n, final Collection<Integer> list) {
+    }
+
+    <E extends Exception, R> void toss(final E e, final R r) throws E {
+    }
+
+    void toss(final IOException e, final String s) {
+    }
+
+    void direct(final Integer n, final List<? extends Number> list, final IOException e, final String s) throws IOException {
+        this.bounded(n, list);
+        this.toss(e, (Object) s);
     }
 }
 

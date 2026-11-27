@@ -1274,6 +1274,10 @@ public class AstMethodBodyBuilder {
 
                 if (resultType != null) {
                     invocation.putUserData(Keys.WIDENED_TYPE, resultType);
+
+                    if (!resultType.isArray()) {
+                        invocation.putUserData(Keys.WIDENED_RECEIVER, true);
+                    }
                 }
 
                 return eraseParameterizedResult(methodReference.resolve().getReturnType(), invocation);
@@ -1474,6 +1478,19 @@ public class AstMethodBodyBuilder {
      * of its array, no longer has the parameterized type expected where it is stored, returned or passed.
      */
     private Expression eraseConsumedResult(final Expression value) {
+        if (value instanceof ConditionalExpression) {
+            final ConditionalExpression conditional = (ConditionalExpression) value;
+            final Expression whenTrue = conditional.getTrueExpression();
+            final Expression whenFalse = conditional.getFalseExpression();
+
+            whenTrue.remove();
+            whenFalse.remove();
+            conditional.setTrueExpression(eraseConsumedResult(whenTrue));
+            conditional.setFalseExpression(eraseConsumedResult(whenFalse));
+
+            return conditional;
+        }
+
         if (value.getUserData(Keys.WIDENED_RECEIVER) == null) {
             return value;
         }
@@ -1979,7 +1996,9 @@ public class AstMethodBodyBuilder {
                 (!isStrict(definition, argumentTypes) || isStrict(candidate, argumentTypes)) &&
                 MetadataHelper.isAssignableFrom(MetadataHelper.erase(other), argumentType) &&
                 isApplicable(candidate, argumentTypes) &&
-                !isLessSpecific(candidate, definition)) {
+                !isLessSpecific(candidate, definition) &&
+                (!isThrown((GenericParameter) declared, definition) ||
+                 !isExcludedByAnotherCast(candidate, definition, position))) {
 
                 competing.add(MetadataHelper.erase(other));
             }
@@ -2016,6 +2035,32 @@ public class AstMethodBodyBuilder {
             argumentTypes.entrySet(),
             argument -> accepts(candidate.getParameters().get(argument.getKey()).getParameterType(), argument.getValue())
         );
+    }
+
+    /**
+     * Tells whether the cast of another argument, which does not change what the method throws, already
+     * rules an overload out.
+     */
+    private static boolean isExcludedByAnotherCast(
+        final MethodReference candidate,
+        final MethodDefinition method,
+        final int position) {
+
+        final List<ParameterDefinition> parameters = method.getParameters();
+
+        for (int i = 0, n = parameters.size(); i < n; i++) {
+            final TypeReference declared = parameters.get(i).getParameterType();
+
+            if (i != position &&
+                declared.isGenericParameter() &&
+                !isThrown((GenericParameter) declared, method) &&
+                !accepts(candidate.getParameters().get(i).getParameterType(), MetadataHelper.erase(declared))) {
+
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Tells whether a method takes the arguments without boxing or unboxing any, which comes first. */
@@ -2105,7 +2150,44 @@ public class AstMethodBodyBuilder {
         final TypeDefinition definition = parameterType.resolve();
         final TypeReference asParameterType = definition != null ? MetadataHelper.asSuper(definition, reference) : null;
 
-        return asParameterType == null || isLegalCast(parameterType, asParameterType);
+        return !(asParameterType instanceof IGenericInstance) ||
+               containsTypeArguments((IGenericInstance) parameterType, (IGenericInstance) asParameterType);
+    }
+
+    /** Tells whether the type arguments of a parameter allow those of an argument to be passed to it. */
+    private static boolean containsTypeArguments(final IGenericInstance parameter, final IGenericInstance argument) {
+        final List<TypeReference> targets = parameter.getTypeArguments();
+        final List<TypeReference> sources = argument.getTypeArguments();
+
+        for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
+            if (!contains(targets.get(i), sources.get(i))) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static boolean contains(final TypeReference target, final TypeReference source) {
+        if (!target.isWildcardType()) {
+            return MetadataHelper.isSameType(target, source);
+        }
+
+        if (target.hasSuperBound()) {
+            final TypeReference lower = source.isWildcardType() ? source.hasSuperBound() ? source.getSuperBound() : null
+                                                                : source;
+
+            return lower != null && MetadataHelper.isAssignableFrom(lower, target.getSuperBound());
+        }
+
+        if (!target.hasExtendsBound() || BuiltinTypes.Object.isEquivalentTo(target.getExtendsBound())) {
+            return true;
+        }
+
+        final TypeReference upper = source.isWildcardType() ? source.hasExtendsBound() ? source.getExtendsBound() : null
+                                                            : source;
+
+        return upper != null && MetadataHelper.isAssignableFrom(target.getExtendsBound(), upper);
     }
 
     /** Tells whether the type given to a generic parameter is also one which the method throws. */
