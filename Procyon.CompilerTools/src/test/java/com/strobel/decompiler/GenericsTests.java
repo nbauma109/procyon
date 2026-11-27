@@ -334,6 +334,16 @@ public class GenericsTests extends DecompilerTest {
                 "        Sink<String, java.io.IOException> k = (Sink<String, java.io.IOException>) (Sink) sink((Sink<?, ?>) t);",
                 "        return k::get;",
                 "    }",
+                "    interface Left { }",
+                "    interface Right { }",
+                "    static class Middle implements Left, Right { }",
+                "    static class Centred extends Sink<Middle, java.io.IOException> { }",
+                "    Centred sink(Centred t) { return t; }",
+                "    interface Sides { String run(java.util.List<Left> a, java.util.List<Right> b) throws java.io.IOException; }",
+                "    Sides sides(Centred t) {",
+                "        Sink<Middle, java.io.IOException> m = (Sink<Middle, java.io.IOException>) (Sink) sink((Sink<?, ?>) t);",
+                "        return m::get;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -675,6 +685,12 @@ public class GenericsTests extends DecompilerTest {
             "    Drain drain(final Sinking sinking) {\n" +
             "        return ((Sink<String, IOException>)(Sink)this.sink((Sink)sinking))::get;\n" +
             "    }\n" +
+            "    Centred sink(final Centred centred) {\n" +
+            "        return centred;\n" +
+            "    }\n" +
+            "    Sides sides(final Centred centred) {\n" +
+            "        return ((Sink<Middle, IOException>)(Sink)this.sink((Sink)centred))::get;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -704,15 +720,26 @@ public class GenericsTests extends DecompilerTest {
             "    interface Strings {\n" +
             "        String[] get();\n" +
             "    }\n" +
-            "    interface Drain {\n" +
-            "        String run(final List<CharSequence> p0, final List<Serializable> p1) throws IOException;\n" +
+            "    interface Sides {\n" +
+            "        String run(final List<Left> p0, final List<Right> p1) throws IOException;\n" +
             "    }\n" +
-            "    static class Sinking extends Sink<String, IOException> {\n" +
+            "    interface Left {\n" +
+            "    }\n" +
+            "    interface Right {\n" +
+            "    }\n" +
+            "    static class Centred extends Sink<Middle, IOException> {\n" +
             "    }\n" +
             "    static class Sink<X, E extends Exception> {\n" +
             "        String get(final List<? super X> list, final List<? super X> list2) throws E, Exception {\n" +
             "            return null;\n" +
             "        }\n" +
+            "    }\n" +
+            "    static class Middle implements Left, Right {\n" +
+            "    }\n" +
+            "    interface Drain {\n" +
+            "        String run(final List<CharSequence> p0, final List<Serializable> p1) throws IOException;\n" +
+            "    }\n" +
+            "    static class Sinking extends Sink<String, IOException> {\n" +
             "    }\n" +
             "    interface Covariant extends Loose, Tight {\n" +
             "    }\n" +
@@ -1812,6 +1839,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void order(final Integer e, final List<String> a, final List<Integer> b) {\n" +
             "        this.ordered(e, a, b);\n" +
+            "    }\n" +
+            "    <E extends Number> void floors(final E e, final List<String[]> a, final List<Integer> b) {\n" +
+            "    }\n" +
+            "    <N> void floors(final Integer e, final Collection<? super N[]> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    void floored(final Integer e, final List<String[]> a, final List<Integer> b) {\n" +
+            "        this.floors(e, a, b);\n" +
             "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
@@ -3126,6 +3160,16 @@ class Shared {
 
     void order(final Integer e, final List<String> a, final List<Integer> b) {
         this.ordered(e, a, b);
+    }
+
+    <E extends Number> void floors(final E e, final List<String[]> a, final List<Integer> b) {
+    }
+
+    <N> void floors(final Integer e, final Collection<? super N[]> a, final Collection<N> b) {
+    }
+
+    void floored(final Integer e, final List<String[]> a, final List<Integer> b) {
+        this.floors(e, a, b);
     }
 
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {

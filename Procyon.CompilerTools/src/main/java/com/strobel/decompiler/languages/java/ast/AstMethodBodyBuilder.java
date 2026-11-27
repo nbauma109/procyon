@@ -53,6 +53,7 @@ public class AstMethodBodyBuilder {
     private final Set<Variable> _localVariablesToDefine = new LinkedHashSet<>();
     private final Set<Variable> _widenedVariables = new HashSet<>();
     private final Map<Variable, List<TypeReference>> _widenedLocals = new HashMap<>();
+    private final Map<Variable, Expression> _widenedValues = new HashMap<>();
 
     private final static INode LAMBDA_BODY_PATTERN;
     private final static INode EMPTY_LAMBDA_BODY_PATTERN;
@@ -1672,6 +1673,7 @@ public class AstMethodBodyBuilder {
         if (bounds != null) {
             // The members of the local are only known as far as the widening allows.
             _widenedLocals.put(variable, bounds);
+            _widenedValues.put(variable, source);
         }
 
         if (type != null &&
@@ -2110,6 +2112,74 @@ public class AstMethodBodyBuilder {
                : first;
     }
 
+    /**
+     * Returns the types which the widened arguments of the invocation producing a value had before they
+     * were widened.
+     */
+    private List<TypeReference> originalTypes(final Expression value, final Set<Variable> visited) {
+        if (value instanceof CastExpression) {
+            return originalTypes(((CastExpression) value).getExpression(), visited);
+        }
+
+        if (value instanceof IdentifierExpression) {
+            final Variable variable = value.getUserData(Keys.VARIABLE);
+            final Expression assigned = variable != null && visited.add(variable) ? _widenedValues.get(variable)
+                                                                                  : null;
+
+            return assigned != null ? originalTypes(assigned, visited) : Collections.<TypeReference>emptyList();
+        }
+
+        final List<TypeReference> types = new ArrayList<>();
+
+        if (value instanceof InvocationExpression) {
+            final JavaResolver resolver = new JavaResolver(_context);
+
+            for (Expression argument : ((InvocationExpression) value).getArguments()) {
+                if (argument.getUserData(Keys.SELECTS_OVERLOAD) == null) {
+                    continue;
+                }
+
+                while (argument instanceof CastExpression) {
+                    argument = ((CastExpression) argument).getExpression();
+                }
+
+                final ResolveResult resolved = resolver.apply(argument);
+
+                if (resolved != null && resolved.getType() != null) {
+                    types.add(resolved.getType());
+                }
+            }
+        }
+
+        return types;
+    }
+
+    private static TypeReference originalTypeArgument(
+        final TypeDefinition definition,
+        final GenericParameter variable,
+        final List<TypeReference> origins,
+        final TypeReference limit) {
+
+        final int index = definition.getGenericParameters().indexOf(variable);
+
+        for (final TypeReference origin : origins) {
+            final TypeReference viewed = MetadataHelper.asSuper(definition, origin);
+
+            if (viewed instanceof IGenericInstance && index >= 0) {
+                final TypeReference argument = ((IGenericInstance) viewed).getTypeArguments().get(index);
+
+                if (!argument.isWildcardType() &&
+                    !argument.isGenericParameter() &&
+                    MetadataHelper.isAssignableFrom(limit, argument)) {
+
+                    return argument;
+                }
+            }
+        }
+
+        return limit;
+    }
+
     private boolean specializeReceiver(
         final MethodGroupExpression methodGroup,
         final TypeReference declaringType,
@@ -2149,14 +2219,19 @@ public class AstMethodBodyBuilder {
         }
 
         final List<TypeReference> typeArguments = new ArrayList<>();
+        final List<TypeReference> origins = originalTypes(receiver, new HashSet<Variable>());
         boolean specialized = false;
 
         for (final GenericParameter variable : definition.getGenericParameters()) {
             TypeReference typeArgument = arguments.get(variable.getSimpleName());
 
             if (typeArgument != null && typeArgument.isWildcardType()) {
-                // Nothing but a limit is known, which itself will do.
-                typeArgument = typeArgument.getExtendsBound();
+                // Only a limit is known: the type seen before the widening may satisfy it, or else the
+                // limit itself will do.
+                typeArgument = originalTypeArgument(definition,
+                                                    variable,
+                                                    origins,
+                                                    typeArgument.getExtendsBound());
             }
 
             if (typeArgument != null && !typeArgument.isPrimitive() && accepts(variable, typeArgument)) {
@@ -3701,7 +3776,7 @@ public class AstMethodBodyBuilder {
                     }
                 }
 
-                if (bound != null && bound.isArray() && !target.hasSuperBound()) {
+                if (bound != null && bound.isArray()) {
                     TypeReference element = bound;
                     TypeReference passed = !source.isWildcardType() ? source : wildcardBound(source);
 
@@ -3710,9 +3785,14 @@ public class AstMethodBodyBuilder {
                         passed = passed.getElementType();
                     }
 
-                    // The elements of the argument must be subtypes of the type for which a variable stands.
+                    // The elements of the argument are related to the type for which a variable stands in the
+                    // direction of the bound.
                     if (passed != null && element.isGenericParameter() && !passed.isPrimitive()) {
-                        wildcards.add(new AbstractMap.SimpleEntry<>((GenericParameter) element, passed));
+                        wildcards.add(new AbstractMap.SimpleEntry<>(
+                            (GenericParameter) element,
+                            target.hasSuperBound() ? com.strobel.assembler.metadata.WildcardType.makeSuper(passed)
+                                                   : passed
+                        ));
                     }
                 }
 
