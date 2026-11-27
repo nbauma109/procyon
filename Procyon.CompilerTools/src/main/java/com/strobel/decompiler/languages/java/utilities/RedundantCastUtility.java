@@ -139,14 +139,19 @@ public final class RedundantCastUtility {
             declared = field != null ? field.getFieldType() : null;
         }
 
-        if (declared == null || !declared.isGenericParameter()) {
-            return false;
+        TypeReference castType = cast.getType().toTypeReference();
+
+        while (declared != null && castType != null && declared.isArray() && castType.isArray()) {
+            declared = declared.getElementType();
+            castType = castType.getElementType();
         }
 
-        final TypeReference castType = cast.getType().toTypeReference();
+        final TypeReference narrowed = castType;
 
-        return castType != null &&
-               bounds.stream().noneMatch(bound -> MetadataHelper.isAssignableFrom(castType, bound));
+        return declared != null &&
+               declared.isGenericParameter() &&
+               narrowed != null &&
+               bounds.stream().noneMatch(bound -> MetadataHelper.isAssignableFrom(narrowed, bound));
     }
 
     @Nullable

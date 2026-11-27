@@ -5,6 +5,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.stream.Stream;
 import java.util.function.Supplier;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.Optional;
 import java.util.Collections;
@@ -507,6 +508,44 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void arrays(final String s, final List<String>[] lists) {\n" +
             "        this.pair((CharSequence)s, (List[])lists);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testDependentFunctionsAndApplicableOverloads() {
+        verifyOutput(
+            Consumers.class,
+            defaultSettings(),
+            "class Consumers {\n" +
+            "    <T extends CharSequence> void take(final T t, final Consumer<T> consumer) {\n" +
+            "    }\n" +
+            "    void take(final String s, final Consumer<String> consumer) {\n" +
+            "    }\n" +
+            "    static void print(final String value) {\n" +
+            "    }\n" +
+            "    void lambda(final String s) {\n" +
+            "        this.take((CharSequence)s, (Consumer)(Consumer<String>)(x -> print(x.substring(1))));\n" +
+            "    }\n" +
+            "    void reference(final String s) {\n" +
+            "        this.take((CharSequence)s, (Consumer)(Consumer<String>)Consumers::print);\n" +
+            "    }\n" +
+            "    <T extends CharSequence> void count(final T t, final int n) {\n" +
+            "    }\n" +
+            "    void count(final String s, final String n) {\n" +
+            "    }\n" +
+            "    void inapplicable(final String s) {\n" +
+            "        this.count(s, 1);\n" +
+            "    }\n" +
+            "    <T extends CharSequence> Crate<T> crate(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    Crate<String> crate(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    String array(final String s) {\n" +
+            "        return ((String[])(String[])this.crate((CharSequence)s).array())[0].substring(1);\n" +
             "    }\n" +
             "}\n"
         );
@@ -1079,6 +1118,11 @@ class Pairs {
 @SuppressWarnings("unused") // decompiler fixture
 class Crate<T> {
     T value;
+
+    T[] array() {
+        return null;
+    }
+
     List<T> values;
     List<T>[] shelves;
 }
@@ -1130,6 +1174,48 @@ class Narrowed {
 
     void arrays(final String s, final List<String>[] lists) {
         this.pair((CharSequence) s, (List[]) lists);
+    }
+}
+
+@SuppressWarnings({ "unused", "unchecked" }) // decompiler fixture
+class Consumers {
+    <T extends CharSequence> void take(final T t, final Consumer<T> consumer) {
+    }
+
+    void take(final String s, final Consumer<String> consumer) {
+    }
+
+    static void print(final String value) {
+    }
+
+    void lambda(final String s) {
+        this.take((CharSequence) s, (Consumer) (Consumer<String>) (x -> print(x.substring(1))));
+    }
+
+    void reference(final String s) {
+        this.take((CharSequence) s, (Consumer) (Consumer<String>) Consumers::print);
+    }
+
+    <T extends CharSequence> void count(final T t, final int n) {
+    }
+
+    void count(final String s, final String n) {
+    }
+
+    void inapplicable(final String s) {
+        this.count(s, 1);
+    }
+
+    <T extends CharSequence> Crate<T> crate(final T t) {
+        return null;
+    }
+
+    Crate<String> crate(final String s) {
+        return null;
+    }
+
+    String array(final String s) {
+        return ((String[]) this.crate((CharSequence) s).array())[0].substring(1);
     }
 }
 

@@ -1412,20 +1412,40 @@ public class AstMethodBodyBuilder {
 
             if (element instanceof IGenericInstance &&
                 !(original instanceof NullReferenceExpression) &&
-                !(original instanceof LambdaExpression) &&
-                !(original instanceof MethodGroupExpression) &&
                 any(widened, name -> mentions(declared, name))) {
 
                 final TypeReference rawType = MetadataHelper.erase(declared);
 
                 original.remove();
 
-                final CastExpression cast = new CastExpression(_astBuilder.convertType(rawType), original);
+                final CastExpression cast = new CastExpression(
+                    _astBuilder.convertType(rawType),
+                    keepSpecialization(original)
+                );
 
                 cast.putUserData(Keys.SELECTS_OVERLOAD, rawType);
                 arguments.set(i, cast);
             }
         }
+    }
+
+    /**
+     * A lambda or method reference takes its parameter types from its functional interface, which a
+     * raw cast alone would erase.
+     */
+    private Expression keepSpecialization(final Expression argument) {
+        final TypeReference type = argument instanceof LambdaExpression || argument instanceof MethodGroupExpression
+                                   ? argument.getUserData(Keys.TYPE_REFERENCE)
+                                   : null;
+
+        if (!(type instanceof IGenericInstance)) {
+            return argument;
+        }
+
+        final CastExpression cast = new CastExpression(_astBuilder.convertType(type), argument);
+
+        cast.putUserData(Keys.RESULT_CAST, true);
+        return cast;
     }
 
     /** Marks an expression accessing a value whose type depends on a widened argument. */
@@ -1688,6 +1708,16 @@ public class AstMethodBodyBuilder {
 
         options.setAllowWildcards(false);
 
+        final Map<Integer, TypeReference> argumentTypes = new HashMap<>();
+
+        for (int i = 0, n = arguments.size(); i < n; i++) {
+            final ResolveResult result = resolver.apply(arguments.get(i));
+
+            if (result != null && result.getType() != null) {
+                argumentTypes.put(parameters.get(i).getPosition(), result.getType());
+            }
+        }
+
         for (int i = 0, n = arguments.size(); i < n; i++) {
             final Expression argument = arguments.get(i);
             final ResolveResult resolvedArgument = resolver.apply(argument);
@@ -1709,7 +1739,7 @@ public class AstMethodBodyBuilder {
                 method,
                 resolvedReceiver != null ? resolvedReceiver.getType() : null,
                 p.getPosition(),
-                aType
+                argumentTypes
             );
 
             if (boundType != null) {
@@ -1907,7 +1937,9 @@ public class AstMethodBodyBuilder {
         final MethodReference method,
         final TypeReference receiverType,
         final int position,
-        final TypeReference argumentType) {
+        final Map<Integer, TypeReference> argumentTypes) {
+
+        final TypeReference argumentType = argumentTypes.get(position);
 
         final MethodDefinition definition = method.isConstructor() ? null : method.resolve();
 
@@ -1930,7 +1962,8 @@ public class AstMethodBodyBuilder {
             if (!candidate.getErasedSignature().equals(signature) &&
                 !other.isGenericParameter() &&
                 isAccessible(candidate) &&
-                MetadataHelper.isAssignableFrom(MetadataHelper.erase(other), argumentType)) {
+                MetadataHelper.isAssignableFrom(MetadataHelper.erase(other), argumentType) &&
+                isApplicable(candidate, argumentTypes)) {
 
                 competing.add(MetadataHelper.erase(other));
             }
@@ -1956,6 +1989,25 @@ public class AstMethodBodyBuilder {
         }
 
         return accessibleSubstitute(typesOf(bound), argumentType, competing);
+    }
+
+    /**
+     * Tells whether an overload accepts the types of all the arguments.  Conversions of primitive types
+     * and parameters declared with type variables are not examined.
+     */
+    private static boolean isApplicable(final MethodReference candidate, final Map<Integer, TypeReference> argumentTypes) {
+        return all(
+            argumentTypes.entrySet(),
+            argument -> {
+                final TypeReference parameterType = candidate.getParameters().get(argument.getKey()).getParameterType();
+                final TypeReference argumentType = argument.getValue();
+
+                return parameterType.isGenericParameter() ||
+                       parameterType.isPrimitive() ||
+                       argumentType.isPrimitive() && MetadataHelper.getUnderlyingPrimitiveTypeOrSelf(parameterType).isPrimitive() ||
+                       MetadataHelper.isAssignableFrom(MetadataHelper.erase(parameterType), argumentType);
+            }
+        );
     }
 
     /** Tells whether the type given to a generic parameter is also one which the method throws. */
