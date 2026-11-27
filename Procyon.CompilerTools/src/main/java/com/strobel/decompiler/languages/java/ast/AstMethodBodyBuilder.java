@@ -1933,6 +1933,10 @@ public class AstMethodBodyBuilder {
                 element = wildcardBound(element);
                 target = wildcardBound(target);
             }
+            else if (!element.isWildcardType() && target.isWildcardType() && wildcardBound(target) != null) {
+                // A type itself is within the bound which it must satisfy.
+                target = wildcardBound(target);
+            }
 
             if (element.isWildcardType() || element.isGenericParameter()) {
                 continue;
@@ -2149,14 +2153,30 @@ public class AstMethodBodyBuilder {
         final MethodReference method,
         final TypeReference functionType) {
 
-        final MethodDefinition descriptor = functionType != null ? descriptorOf(functionType.resolve()) : null;
-        final List<TypeReference> candidates = new ArrayList<>();
+        final List<List<TypeReference>> clauses = new ArrayList<>();
 
-        if (descriptor != null) {
+        for (final MethodDefinition descriptor : descriptorsOf(functionType != null ? functionType.resolve() : null)) {
+            final List<TypeReference> clause = new ArrayList<>();
+
             for (final TypeReference declared : descriptor.getThrownTypes()) {
                 final TypeReference thrown = typeArgumentIn(declared, descriptor, functionType);
 
                 if (thrown != null) {
+                    clause.add(thrown);
+                }
+            }
+
+            clauses.add(clause);
+        }
+
+        final List<TypeReference> candidates = new ArrayList<>();
+
+        // Every declaration which the descriptor inherits must allow what it throws.
+        for (final List<TypeReference> clause : clauses) {
+            for (final TypeReference thrown : clause) {
+                if (all(clauses,
+                        other -> any(other, allowed -> MetadataHelper.isAssignableFrom(allowed, thrown)))) {
+
                     candidates.add(thrown);
                 }
             }
@@ -2263,17 +2283,33 @@ public class AstMethodBodyBuilder {
 
     /** Returns the abstract method of a functional interface, which it may inherit. */
     private static MethodDefinition descriptorOf(final TypeDefinition type) {
+        return firstOrDefault(descriptorsOf(type));
+    }
+
+    /**
+     * Returns the declarations of the abstract method of a functional interface, of which unrelated
+     * parents may each provide one.
+     */
+    private static List<MethodDefinition> descriptorsOf(final TypeDefinition type) {
         final List<MethodDefinition> methods = new ArrayList<>();
 
         addInterfaceMethods(type, methods);
 
         // Only the declaration of the most derived interface counts, whether abstract or default.
-        return firstOrDefault(
-            methods,
-            method -> method.isAbstract() &&
-                      !isObjectMethod(method) &&
-                      !any(methods, other -> overrides(other, method))
-        );
+        final List<MethodDefinition> declarations = new ArrayList<>();
+
+        for (final MethodDefinition method : methods) {
+            if (method.isAbstract() &&
+                !isObjectMethod(method) &&
+                !any(methods, other -> overrides(other, method)) &&
+                (declarations.isEmpty() ||
+                 parameterSignature(method).equals(parameterSignature(declarations.get(0))))) {
+
+                declarations.add(method);
+            }
+        }
+
+        return declarations;
     }
 
     private static boolean overrides(final MethodDefinition method, final MethodDefinition inherited) {

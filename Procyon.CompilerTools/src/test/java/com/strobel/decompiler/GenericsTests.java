@@ -269,6 +269,24 @@ public class GenericsTests extends DecompilerTest {
                 "        Texts<java.io.IOException> a = (Texts<java.io.IOException>) (Texts) texts((Texts<?>) t);",
                 "        return a::get;",
                 "    }",
+                "    static class Bounded<X, Y, E extends Exception> { X get(java.util.List<? extends Y> list) throws E { return null; } }",
+                "    static class Boundary extends Bounded<Integer, Integer, java.io.IOException> { }",
+                "    <T extends Bounded<?, ?, ?>> T bounded(T t) { return t; }",
+                "    Boundary bounded(Boundary t) { return t; }",
+                "    interface Within { Integer run(java.util.List<Integer> list) throws java.io.IOException; }",
+                "    Within within(Boundary t) {",
+                "        Bounded<Integer, Integer, java.io.IOException> n = (Bounded<Integer, Integer, java.io.IOException>) (Bounded) bounded((Bounded<?, ?, ?>) t);",
+                "        return n::get;",
+                "    }",
+                "    static class Calmed extends Texts<RuntimeException> { }",
+                "    Calmed texts(Calmed t) { return t; }",
+                "    interface Io { String run() throws java.io.IOException; }",
+                "    interface Sql { String run() throws java.sql.SQLException; }",
+                "    interface Neither extends Io, Sql { }",
+                "    Neither neither(Calmed t) {",
+                "        Texts<RuntimeException> c = (Texts<RuntimeException>) (Texts) texts((Texts<?>) t);",
+                "        return c::get;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -553,6 +571,21 @@ public class GenericsTests extends DecompilerTest {
             "    Again again(final Texted texted) {\n" +
             "        return ((Texts<IOException>)(Texts)this.texts((Texts)texted))::get;\n" +
             "    }\n" +
+            "    <T extends Bounded<?, ?, ?>> T bounded(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Boundary bounded(final Boundary boundary) {\n" +
+            "        return boundary;\n" +
+            "    }\n" +
+            "    Within within(final Boundary boundary) {\n" +
+            "        return ((Bounded<Integer, Integer, IOException>)(Bounded)this.bounded((Bounded)boundary))::get;\n" +
+            "    }\n" +
+            "    Calmed texts(final Calmed calmed) {\n" +
+            "        return calmed;\n" +
+            "    }\n" +
+            "    Neither neither(final Calmed calmed) {\n" +
+            "        return ((Texts<RuntimeException>)(Texts)this.texts((Texts)calmed))::get;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -582,12 +615,32 @@ public class GenericsTests extends DecompilerTest {
             "    interface Strings {\n" +
             "        String[] get();\n" +
             "    }\n" +
-            "    static class Texted extends Texts<IOException> {\n" +
+            "    interface Neither extends Io, Sql {\n" +
+            "    }\n" +
+            "    interface Io {\n" +
+            "        String run() throws IOException;\n" +
+            "    }\n" +
+            "    interface Sql {\n" +
+            "        String run() throws SQLException;\n" +
+            "    }\n" +
+            "    static class Calmed extends Texts<RuntimeException> {\n" +
             "    }\n" +
             "    static class Texts<E extends Exception> {\n" +
             "        String get() throws E, Exception {\n" +
             "            return null;\n" +
             "        }\n" +
+            "    }\n" +
+            "    interface Within {\n" +
+            "        Integer run(final List<Integer> p0) throws IOException;\n" +
+            "    }\n" +
+            "    static class Boundary extends Bounded<Integer, Integer, IOException> {\n" +
+            "    }\n" +
+            "    static class Bounded<X, Y, E extends Exception> {\n" +
+            "        X get(final List<? extends Y> list) throws E, Exception {\n" +
+            "            return null;\n" +
+            "        }\n" +
+            "    }\n" +
+            "    static class Texted extends Texts<IOException> {\n" +
             "    }\n" +
             "    interface Grid {\n" +
             "        List<String>[] run() throws IOException;\n" +
