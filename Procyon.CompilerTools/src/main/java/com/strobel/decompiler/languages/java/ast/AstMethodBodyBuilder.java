@@ -678,6 +678,7 @@ public class AstMethodBodyBuilder {
 
             case GetField: {
                 final MemberReferenceExpression fieldReference;
+                final boolean widened = isWidened(arg1);
 
                 if (arg1 instanceof ThisReferenceExpression &&
                     MetadataHelper.isSubType(_context.getCurrentType(), fieldOperand.getDeclaringType()) &&
@@ -690,6 +691,11 @@ public class AstMethodBodyBuilder {
                 }
 
                 fieldReference.putUserData(Keys.MEMBER_REFERENCE, fieldOperand);
+
+                if (widened) {
+                    fieldReference.putUserData(Keys.WIDENED_RECEIVER, true);
+                }
+
                 return fieldReference;
             }
 
@@ -1280,8 +1286,8 @@ public class AstMethodBodyBuilder {
     }
 
     /**
-     * The type of a local storing a result which depends on a widened receiver, such as its iterator
-     * or an element of its array, was inferred before the widening.
+     * The type of a local storing a value which depends on a widened result, such as its iterator, one
+     * of its fields or an element of its array, was inferred before the widening.
      */
     private Expression eraseStoredResult(final Expression value) {
         if (value.getUserData(Keys.WIDENED_RECEIVER) == null) {
@@ -1296,20 +1302,30 @@ public class AstMethodBodyBuilder {
             depth++;
         }
 
-        final MethodReference method = (MethodReference) source.getUserData(Keys.MEMBER_REFERENCE);
-        final MethodDefinition definition = method != null ? method.resolve() : null;
+        TypeReference declared = declaredType(source.getUserData(Keys.MEMBER_REFERENCE));
 
-        if (definition == null) {
+        if (declared == null) {
             return value;
         }
-
-        TypeReference declared = definition.getReturnType();
 
         while (depth-- > 0 && declared.isArray()) {
             declared = declared.getElementType();
         }
 
         return eraseParameterizedResult(declared, value);
+    }
+
+    /** Returns the type with which a field or the result of a method is declared, if it is known. */
+    private static TypeReference declaredType(final MemberReference member) {
+        if (member instanceof MethodReference) {
+            final MethodDefinition method = ((MethodReference) member).resolve();
+
+            return method != null ? method.getReturnType() : null;
+        }
+
+        final FieldDefinition field = member instanceof FieldReference ? ((FieldReference) member).resolve() : null;
+
+        return field != null ? field.getFieldType() : null;
     }
 
     /**

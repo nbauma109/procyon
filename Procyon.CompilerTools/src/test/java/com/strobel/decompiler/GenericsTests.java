@@ -366,6 +366,20 @@ public class GenericsTests extends DecompilerTest {
             "        final List<CharSequence> list = (List)this.arrays((CharSequence)s)[0];\n" +
             "        return list.size();\n" +
             "    }\n" +
+            "    <T extends CharSequence> Crate<T> crate(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    Crate<String> crate(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    int field(final String s) {\n" +
+            "        final List<CharSequence> values = (List)this.crate((CharSequence)s).values;\n" +
+            "        return values.size();\n" +
+            "    }\n" +
+            "    int fieldElement(final String s) {\n" +
+            "        final List<CharSequence> list = (List)this.crate((CharSequence)s).shelves[0];\n" +
+            "        return list.size();\n" +
+            "    }\n" +
             "}\n"
         );
     }
@@ -914,6 +928,30 @@ class Pairs {
         final List<CharSequence> list = this.arrays((CharSequence) s)[0];
         return list.size();
     }
+
+    <T extends CharSequence> Crate<T> crate(final T t) {
+        return null;
+    }
+
+    Crate<String> crate(final String s) {
+        return null;
+    }
+
+    int field(final String s) {
+        final List<CharSequence> values = this.crate((CharSequence) s).values;
+        return values.size();
+    }
+
+    int fieldElement(final String s) {
+        final List<CharSequence> list = this.crate((CharSequence) s).shelves[0];
+        return list.size();
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class Crate<T> {
+    List<T> values;
+    List<T>[] shelves;
 }
 
 @SuppressWarnings("unused") // decompiler fixture
