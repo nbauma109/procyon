@@ -1649,11 +1649,41 @@ public class AstMethodBodyBuilder {
 
         final TypeReference bound = selectingBound((GenericParameter) declared, definition, receiverType);
 
+        if (isThrown((GenericParameter) declared, definition)) {
+            // Casting to the bound would widen what the method throws, so stay close to the argument.
+            final TypeReference narrower = accessibleSubstitute(typesOf(bound), argumentType, competing);
+
+            if (narrower != null) {
+                return narrower;
+            }
+        }
+
         if (bound.isGenericParameter() || all(typesOf(bound), this::isAccessibleType)) {
             return bound;
         }
 
         return accessibleSubstitute(typesOf(bound), argumentType, competing);
+    }
+
+    /** Tells whether the type given to a generic parameter is also one which the method throws. */
+    private static boolean isThrown(final GenericParameter parameter, final MethodDefinition method) {
+        TypeReference type = parameter;
+
+        while (type.isGenericParameter()) {
+            final String name = type.getSimpleName();
+
+            if (any(method.getThrownTypes(), t -> t.isGenericParameter() && t.getSimpleName().equals(name))) {
+                return true;
+            }
+
+            if (!((GenericParameter) type).hasExtendsBound()) {
+                break;
+            }
+
+            type = ((GenericParameter) type).getExtendsBound();
+        }
+
+        return false;
     }
 
     /**

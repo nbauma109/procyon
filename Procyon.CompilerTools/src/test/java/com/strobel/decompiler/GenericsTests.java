@@ -1,6 +1,7 @@
 package com.strobel.decompiler;
 
 import com.strobel.decompiler.fixtures.OverloadsElsewhere;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.stream.Stream;
 import java.util.function.Supplier;
@@ -306,6 +307,22 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    String other(final ClassBound<CharSequence> other, final String value) {\n" +
             "        return (String)other.first((CharSequence)value);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testBoundCastDoesNotWidenTheThrownType() {
+        verifyOutput(
+            FunnelCaller.class,
+            defaultSettings(),
+            "class FunnelCaller {\n" +
+            "    void run(final FileNotFoundException e) throws IOException {\n" +
+            "        Funnel.toss((IOException)e);\n" +
+            "    }\n" +
+            "    void relayed(final FileNotFoundException e) throws IOException {\n" +
+            "        Funnel.relay((IOException)e);\n" +
             "    }\n" +
             "}\n"
         );
@@ -780,6 +797,34 @@ class Tosser {
         void packageOverload(final Integer n) {
             Thrower.count((Number) n);
         }
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class Funnel {
+    static <E extends Exception> void toss(final E e) throws E {
+        throw e;
+    }
+
+    static void toss(final FileNotFoundException e) {
+    }
+
+    static <F extends Exception, E extends F> void relay(final E e) throws F {
+        throw e;
+    }
+
+    static void relay(final FileNotFoundException e) {
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class FunnelCaller {
+    void run(final FileNotFoundException e) throws IOException {
+        Funnel.toss((IOException) e);
+    }
+
+    void relayed(final FileNotFoundException e) throws IOException {
+        Funnel.relay((IOException) e);
     }
 }
 
