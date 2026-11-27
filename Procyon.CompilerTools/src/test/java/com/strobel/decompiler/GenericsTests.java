@@ -582,7 +582,7 @@ public class GenericsTests extends DecompilerTest {
             "    void primitives(final Integer n) {\n" +
             "        this.flag(n, 1);\n" +
             "        this.widen((Number)n, 1);\n" +
-            "        this.box((Number)n, 1);\n" +
+            "        this.box(n, 1);\n" +
             "    }\n" +
             "}\n"
         );
@@ -626,6 +626,50 @@ public class GenericsTests extends DecompilerTest {
             "    void direct(final Integer n, final List<Integer> list) {\n" +
             "        this.constrained(n, list);\n" +
             "        this.specific(n);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testProtectedOverloadsThroughAReceiver() {
+        verifyOutput(
+            RestrictedHeir.class,
+            defaultSettings(),
+            "class RestrictedHeir extends OverloadsElsewhere {\n" +
+            "    void through(final OverloadsElsewhere other, final String s) {\n" +
+            "        other.send(s);\n" +
+            "        this.send((CharSequence)s);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testDirectArraysAndRestrictedOverloads() {
+        verifyOutput(
+            Restricted.class,
+            defaultSettings(),
+            "class Restricted {\n" +
+            "    <T extends CharSequence> T[] array(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    String[] array(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    String element(final String s) {\n" +
+            "        return ((String)this.array((CharSequence)s)[0]).substring(1);\n" +
+            "    }\n" +
+            "    <N extends Number> void arrays(final N n, final List<Integer>[] lists) {\n" +
+            "    }\n" +
+            "    void arrays(final Integer n, final Collection<String>[] lists) {\n" +
+            "    }\n" +
+            "    void protectedElsewhere(final OverloadsElsewhere other, final Integer n, final String s) {\n" +
+            "        OverloadsElsewhere.count(n);\n" +
+            "        other.send(s);\n" +
+            "    }\n" +
+            "    void direct(final Integer n, final List<Integer>[] lists) {\n" +
+            "        this.arrays(n, lists);\n" +
             "    }\n" +
             "}\n"
         );
@@ -1384,6 +1428,44 @@ class Chained {
     void direct(final Integer n, final List<Integer> list) {
         this.constrained(n, list);
         this.specific(n);
+    }
+}
+
+@SuppressWarnings({ "unused", "unchecked" }) // decompiler fixture
+class Restricted {
+    <T extends CharSequence> T[] array(final T t) {
+        return null;
+    }
+
+    String[] array(final String s) {
+        return null;
+    }
+
+    String element(final String s) {
+        return ((String) this.array((CharSequence) s)[0]).substring(1);
+    }
+
+    <N extends Number> void arrays(final N n, final List<Integer>[] lists) {
+    }
+
+    void arrays(final Integer n, final Collection<String>[] lists) {
+    }
+
+    void protectedElsewhere(final OverloadsElsewhere other, final Integer n, final String s) {
+        OverloadsElsewhere.count(n);
+        other.send(s);
+    }
+
+    void direct(final Integer n, final List<Integer>[] lists) {
+        this.arrays(n, lists);
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class RestrictedHeir extends OverloadsElsewhere {
+    void through(final OverloadsElsewhere other, final String s) {
+        other.send(s);
+        this.send((CharSequence) s);
     }
 }
 

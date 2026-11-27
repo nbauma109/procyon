@@ -909,7 +909,8 @@ public class AstMethodBodyBuilder {
                     indexed = ((CastExpression) indexed).getExpression();
                 }
 
-                final boolean widened = isWidened(indexed);
+                final TypeReference indexedType = indexed.getUserData(Keys.WIDENED_TYPE);
+                final boolean widened = isWidened(indexed) || indexedType != null && indexedType.isArray();
                 final Expression source = indexed == arg1 ? null : indexed;
                 final IndexerExpression element = new IndexerExpression( byteCode.getOffset(), discardResultCast(arg1), arg2);
 
@@ -1974,6 +1975,8 @@ public class AstMethodBodyBuilder {
             if (!candidate.getErasedSignature().equals(signature) &&
                 !other.isGenericParameter() &&
                 isAccessible(candidate) &&
+                isAccessibleThrough(candidate, receiverType) &&
+                (!isStrict(definition, argumentTypes) || isStrict(candidate, argumentTypes)) &&
                 MetadataHelper.isAssignableFrom(MetadataHelper.erase(other), argumentType) &&
                 isApplicable(candidate, argumentTypes) &&
                 !isLessSpecific(candidate, definition)) {
@@ -2015,6 +2018,45 @@ public class AstMethodBodyBuilder {
         );
     }
 
+    /** Tells whether a method takes the arguments without boxing or unboxing any, which comes first. */
+    private static boolean isStrict(final MethodReference method, final Map<Integer, TypeReference> argumentTypes) {
+        return all(
+            argumentTypes.entrySet(),
+            argument -> method.getParameters().get(argument.getKey()).getParameterType().isPrimitive() ==
+                        argument.getValue().isPrimitive()
+        );
+    }
+
+    /**
+     * Tells whether a protected method of another package may be invoked through the receiver, which
+     * requires it to be of the type being decompiled, or of one enclosing it.
+     */
+    private boolean isAccessibleThrough(final MethodReference method, final TypeReference receiverType) {
+        final MethodDefinition definition = method.resolve();
+
+        if (receiverType == null ||
+            definition == null ||
+            definition.isStatic() ||
+            !definition.isProtected() ||
+            StringUtilities.equals(definition.getDeclaringType().getPackageName(),
+                                   _context.getCurrentType().getPackageName())) {
+
+            return true;
+        }
+
+        for (TypeDefinition type = _context.getCurrentType(); type != null; ) {
+            if (MetadataHelper.isSubType(MetadataHelper.erase(receiverType), MetadataHelper.erase(type))) {
+                return true;
+            }
+
+            final TypeReference declaringType = type.getDeclaringType();
+
+            type = declaringType != null ? declaringType.resolve() : null;
+        }
+
+        return false;
+    }
+
     /**
      * Tells whether an overload accepts whatever the invoked method accepts, in which case the compiler
      * prefers the latter without any cast.
@@ -2049,6 +2091,10 @@ public class AstMethodBodyBuilder {
 
         if (!MetadataHelper.isAssignableFrom(MetadataHelper.erase(parameterType), reference)) {
             return false;
+        }
+
+        if (parameterType.isArray() && reference.isArray() && !parameterType.getElementType().isPrimitive()) {
+            return accepts(parameterType.getElementType(), reference.getElementType());
         }
 
         if (!(parameterType instanceof IGenericInstance) || parameterType.containsGenericParameters()) {

@@ -15,6 +15,12 @@ public class OverloadsElsewhere {
     protected static void read(final String s) {
     }
 
+    public <C extends CharSequence> void send(final C c) {
+    }
+
+    protected void send(final String s) {
+    }
+
     public static class Parent extends Hidden<String> {
     }
 
