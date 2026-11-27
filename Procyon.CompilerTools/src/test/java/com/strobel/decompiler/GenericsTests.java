@@ -344,6 +344,16 @@ public class GenericsTests extends DecompilerTest {
                 "        Sink<Middle, java.io.IOException> m = (Sink<Middle, java.io.IOException>) (Sink) sink((Sink<?, ?>) t);",
                 "        return m::get;",
                 "    }",
+                "    static class Texted2 extends Texts<java.io.IOException> { }",
+                "    String earlier(Texted t, int n) throws java.io.IOException {",
+                "        Texts<java.io.IOException> b = new Texted2();",
+                "        String r = \"\";",
+                "        while (n-- > 0) {",
+                "            r += b.get();",
+                "            b = (Texts<java.io.IOException>) (Texts) texts((Texts<?>) t);",
+                "        }",
+                "        return r;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -691,6 +701,15 @@ public class GenericsTests extends DecompilerTest {
             "    Sides sides(final Centred centred) {\n" +
             "        return ((Sink<Middle, IOException>)(Sink)this.sink((Sink)centred))::get;\n" +
             "    }\n" +
+            "    String earlier(final Texted texted, int n) throws IOException {\n" +
+            "        Texts texts = new Texted2();\n" +
+            "        String string = \"\";\n" +
+            "        while (n-- > 0) {\n" +
+            "            string += ((Texts<IOException>)(Texts)texts).get();\n" +
+            "            texts = this.texts((Texts)texted);\n" +
+            "        }\n" +
+            "        return string;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -719,6 +738,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    static class Texted2 extends Texts<IOException> {\n" +
+            "    }\n" +
+            "    static class Texts<E extends Exception> {\n" +
+            "        String get() throws E, Exception {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    interface Sides {\n" +
             "        String run(final List<Left> p0, final List<Right> p1) throws IOException;\n" +
@@ -791,11 +817,6 @@ public class GenericsTests extends DecompilerTest {
             "        String run() throws SQLException;\n" +
             "    }\n" +
             "    static class Calmed extends Texts<RuntimeException> {\n" +
-            "    }\n" +
-            "    static class Texts<E extends Exception> {\n" +
-            "        String get() throws E, Exception {\n" +
-            "            return null;\n" +
-            "        }\n" +
             "    }\n" +
             "    interface Within {\n" +
             "        Integer run(final List<Integer> p0) throws IOException;\n" +
@@ -1846,6 +1867,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void floored(final Integer e, final List<String[]> a, final List<Integer> b) {\n" +
             "        this.floors(e, a, b);\n" +
+            "    }\n" +
+            "    <E extends Number> void boxed(final E e, final List<List<String>[]> a, final List<Integer> b) {\n" +
+            "    }\n" +
+            "    <N> void boxed(final Integer e, final Collection<? extends List<N>[]> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    void boxes(final Integer e, final List<List<String>[]> a, final List<Integer> b) {\n" +
+            "        this.boxed(e, a, b);\n" +
             "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
@@ -3170,6 +3198,16 @@ class Shared {
 
     void floored(final Integer e, final List<String[]> a, final List<Integer> b) {
         this.floors(e, a, b);
+    }
+
+    <E extends Number> void boxed(final E e, final List<List<String>[]> a, final List<Integer> b) {
+    }
+
+    <N> void boxed(final Integer e, final Collection<? extends List<N>[]> a, final Collection<N> b) {
+    }
+
+    void boxes(final Integer e, final List<List<String>[]> a, final List<Integer> b) {
+        this.boxed(e, a, b);
     }
 
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {

@@ -285,13 +285,48 @@ public class AstMethodBodyBuilder {
     private void keepEarlierMemberSelection(final InvocationExpression invocation) {
         final MemberReference member = invocation.getUserData(Keys.MEMBER_REFERENCE);
 
-        if (member instanceof MethodReference && takesClassTypeVariables((MethodReference) member)) {
+        if (!(member instanceof MethodReference)) {
+            return;
+        }
+
+        if (takesClassTypeVariables((MethodReference) member)) {
             final List<Expression> arguments = new ArrayList<>(invocation.getArguments());
 
             invocation.getArguments().clear();
             keepMemberSelection((MethodReference) member, arguments);
             invocation.getArguments().addAll(arguments);
         }
+
+        specializeEarlierReceiver(invocation, (MethodReference) member);
+    }
+
+    /** Specializes the receiver of an earlier invocation which would otherwise throw a bound. */
+    private void specializeEarlierReceiver(final InvocationExpression invocation, final MethodReference method) {
+        final Expression access = invocation.getTarget();
+
+        if (!(access instanceof MemberReferenceExpression)) {
+            return;
+        }
+
+        final Expression receiver = ((MemberReferenceExpression) access).getTarget();
+        final Map<String, TypeReference> thrown = thrownTypeArguments(method, receiver.getOffset());
+
+        if (thrown.isEmpty()) {
+            return;
+        }
+
+        receiver.remove();
+
+        final Expression specialized = specializedReceiver(
+            receiver,
+            method.getDeclaringType(),
+            thrown,
+            thrown.keySet().iterator().next()
+        );
+
+        ((MemberReferenceExpression) access).setTarget(
+            specialized != receiver ? new ParenthesizedExpression(specialized) : receiver
+        );
     }
 
     /**
@@ -1839,7 +1874,7 @@ public class AstMethodBodyBuilder {
      * Returns the types for which the type variables of a class stand, as far as the parameters and the
      * result of one of its methods determine them.
      */
-    private static Map<String, TypeReference> receiverTypeArguments(
+    private Map<String, TypeReference> receiverTypeArguments(
         final MethodReference method,
         final IMethodSignature implemented,
         final TypeReference functionType) {
@@ -1914,7 +1949,7 @@ public class AstMethodBodyBuilder {
      * Returns the result type of a functional interface: where several declarations are inherited, the
      * one which all the others accept.
      */
-    private static TypeReference resultOf(final TypeReference functionType) {
+    private TypeReference resultOf(final TypeReference functionType) {
         final List<TypeReference> results = new ArrayList<>();
 
         for (final MethodDefinition descriptor : descriptorsOf(functionType != null ? functionType.resolve() : null)) {
@@ -1941,7 +1976,7 @@ public class AstMethodBodyBuilder {
         }
     }
 
-    private static void addNestedTypeArguments(
+    private void addNestedTypeArguments(
         final Map<String, TypeReference> arguments,
         final TypeReference declared,
         final TypeReference actual) {
@@ -1978,7 +2013,7 @@ public class AstMethodBodyBuilder {
                                             ? element
                                             : element.hasSuperBound() ? element.getSuperBound() : null;
 
-                if (limit != null && !limit.isWildcardType() && !limit.isGenericParameter()) {
+                if (limit != null && !limit.isWildcardType() && !isOutOfScope(limit)) {
                     arguments.merge(target.getSuperBound().getSimpleName(),
                                     com.strobel.assembler.metadata.WildcardType.makeExtends(limit),
                                     AstMethodBodyBuilder::commonType);
@@ -2000,7 +2035,7 @@ public class AstMethodBodyBuilder {
                 target = wildcardBound(target);
             }
 
-            if (element.isWildcardType() || element.isGenericParameter()) {
+            if (element.isWildcardType() || isOutOfScope(element)) {
                 continue;
             }
 
@@ -2397,7 +2432,7 @@ public class AstMethodBodyBuilder {
      * Returns a type thrown by the descriptor of a functional interface as seen from that interface, or
      * {@code null} if it is a type variable without a type argument.
      */
-    private static TypeReference typeArgumentIn(
+    private TypeReference typeArgumentIn(
         final TypeReference type,
         final MethodDefinition descriptor,
         final TypeReference functionType) {
@@ -2438,13 +2473,18 @@ public class AstMethodBodyBuilder {
 
             if (variables.get(i).getSimpleName().equals(type.getSimpleName()) &&
                 !argument.isWildcardType() &&
-                !argument.isGenericParameter()) {
+                !isOutOfScope(argument)) {
 
                 return argument;
             }
         }
 
         return null;
+    }
+
+    /** Tells whether a type is a type variable which cannot be named in the method being decompiled. */
+    private boolean isOutOfScope(final TypeReference type) {
+        return type.isGenericParameter() && !isTypeVariableInScope((GenericParameter) type);
     }
 
     private static boolean isObjectMethod(final MethodDefinition method) {
@@ -3783,6 +3823,18 @@ public class AstMethodBodyBuilder {
                     while (passed != null && element.isArray() && passed.isArray()) {
                         element = element.getElementType();
                         passed = passed.getElementType();
+                    }
+
+                    if (passed != null && element instanceof IGenericInstance) {
+                        final TypeDefinition definition = element.resolve();
+                        final TypeReference asElement = definition != null ? MetadataHelper.asSuper(definition, passed)
+                                                                           : null;
+
+                        if (asElement instanceof IGenericInstance &&
+                            !bind((IGenericInstance) element, (IGenericInstance) asElement, bindings, wildcards)) {
+
+                            return false;
+                        }
                     }
 
                     // The elements of the argument are related to the type for which a variable stands in the
