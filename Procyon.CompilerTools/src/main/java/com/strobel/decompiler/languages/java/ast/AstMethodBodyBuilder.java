@@ -216,6 +216,7 @@ public class AstMethodBodyBuilder {
         final BlockStatement astBlock = transformBlock(method);
 
         CommentStatement.replaceAll(astBlock);
+        markEarlierLoads(astBlock);
 
         declareVariables(mv.methodVariables, astBlock);
 
@@ -274,6 +275,51 @@ public class AstMethodBodyBuilder {
 
             if (declaration != null) {
                 declaration.setName(p.getName());
+            }
+        }
+    }
+
+    /**
+     * A load may be built before the assignment which widens its local, as in the body of a loop: mark
+     * it, along with the accesses to its members.
+     */
+    private void markEarlierLoads(final BlockStatement astBlock) {
+        for (final AstNode node : astBlock.getDescendantsAndSelf()) {
+            if (!(node instanceof IdentifierExpression) || node.getUserData(Keys.WIDENED_RECEIVER) != null) {
+                continue;
+            }
+
+            final List<TypeReference> bounds = _widenedLocals.get(node.getUserData(Keys.VARIABLE));
+
+            if (bounds == null) {
+                continue;
+            }
+
+            Expression access = (Expression) node;
+
+            access.putUserData(Keys.WIDENED_RECEIVER, true);
+            access.putUserData(Keys.WIDENED_BOUNDS, bounds);
+
+            while (true) {
+                AstNode parent = access.getParent();
+
+                if (parent instanceof MemberReferenceExpression &&
+                    ((MemberReferenceExpression) parent).getTarget() == access) {
+
+                    final AstNode invocation = parent.getParent();
+
+                    if (invocation instanceof InvocationExpression &&
+                        ((InvocationExpression) invocation).getTarget() == parent) {
+
+                        parent = invocation;
+                    }
+                }
+                else if (!(parent instanceof IndexerExpression) || ((IndexerExpression) parent).getTarget() != access) {
+                    break;
+                }
+
+                markWidened((Expression) parent, access);
+                access = (Expression) parent;
             }
         }
     }
@@ -1492,10 +1538,15 @@ public class AstMethodBodyBuilder {
 
     /**
      * Returns the bounds to which the arguments were widened.  None is known of the result when another
-     * argument is passed raw, as the compiler then erases it.
+     * argument is passed raw, as the compiler then erases it, or when no argument tells the compiler
+     * what one of the type variables stands for.
      */
     private static List<TypeReference> widenedBounds(final MethodDefinition method, final List<Expression> arguments) {
         final List<TypeReference> bounds = new ArrayList<>();
+
+        if (any(method.getGenericParameters(), v -> !isInferredFromArguments(v, method))) {
+            return bounds;
+        }
 
         for (int i = 0; i < arguments.size(); i++) {
             final TypeReference bound = arguments.get(i).getUserData(Keys.SELECTS_OVERLOAD);
@@ -2260,7 +2311,7 @@ public class AstMethodBodyBuilder {
             return accepts(parameterType.getElementType(), reference.getElementType());
         }
 
-        if (!(parameterType instanceof IGenericInstance) || parameterType.containsGenericParameters()) {
+        if (!(parameterType instanceof IGenericInstance)) {
             return true;
         }
 
@@ -2278,7 +2329,10 @@ public class AstMethodBodyBuilder {
         final List<TypeReference> sources = argument.getTypeArguments();
 
         for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
-            if (!contains(targets.get(i), sources.get(i))) {
+            // A type which depends on a type variable is left to the inference of the compiler.
+            if (!targets.get(i).isGenericParameter() &&
+                !targets.get(i).containsGenericParameters() &&
+                !contains(targets.get(i), sources.get(i))) {
                 return false;
             }
         }

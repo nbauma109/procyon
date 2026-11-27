@@ -3,6 +3,7 @@ package com.strobel.decompiler;
 import com.strobel.decompiler.fixtures.OverloadsElsewhere;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.stream.Stream;
 import java.util.function.Supplier;
 import java.util.function.Consumer;
@@ -59,6 +60,15 @@ public class GenericsTests extends DecompilerTest {
                 "    static class Child extends Box<String> { }",
                 "    <T extends Box<?>> T pick(T t) { return t; }",
                 "    Child pick(Child c) { return c; }",
+                "    String looped(Child c, int n) {",
+                "        Box<?> b = c;",
+                "        String s = \"\";",
+                "        while (n-- > 0) {",
+                "            s += ((String) b.get()).substring(1);",
+                "            b = pick((Box<?>) c);",
+                "        }",
+                "        return s;",
+                "    }",
                 "    String member(Child c) {",
                 "        Box<?> b = pick((Box<?>) c);",
                 "        return ((String) b.get()).substring(1) + b.hashCode();",
@@ -105,6 +115,15 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    Child pick(final Child child) {\n" +
             "        return child;\n" +
+            "    }\n" +
+            "    String looped(final Child child, int n) {\n" +
+            "        Box pick = child;\n" +
+            "        String string = \"\";\n" +
+            "        while (n-- > 0) {\n" +
+            "            string += ((String)pick.get()).substring(1);\n" +
+            "            pick = this.pick((Box)child);\n" +
+            "        }\n" +
+            "        return string;\n" +
             "    }\n" +
             "    String member(final Child child) {\n" +
             "        final Box pick = this.pick((Box)child);\n" +
@@ -790,6 +809,32 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    String chosen(final boolean flag, final String s, final List<String> other) {\n" +
             "        return ((String)(flag ? this.single((CharSequence)s) : other).get(0)).substring(1);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testPartiallyGenericCandidatesAndUninferredResults() {
+        verifyOutput(
+            Partial.class,
+            defaultSettings(),
+            "class Partial {\n" +
+            "    <E extends Number> void toss(final E e, final Map<Integer, Integer> map) {\n" +
+            "    }\n" +
+            "    <N> void toss(final Integer e, final Map<String, N> map) {\n" +
+            "    }\n" +
+            "    <T extends CharSequence & Serializable, R> List<R> wrap(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<String> wrap(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    void partly(final Integer n, final Map<Integer, Integer> map) {\n" +
+            "        this.toss(n, map);\n" +
+            "    }\n" +
+            "    int uninferred(final String s) {\n" +
+            "        return ((CharSequence)this.wrap((CharSequence & Serializable)s).get(0)).length();\n" +
             "    }\n" +
             "}\n"
         );
@@ -1695,6 +1740,31 @@ class Forked {
 
     String chosen(final boolean flag, final String s, final List<String> other) {
         return ((String) (flag ? (List) this.single((CharSequence) s) : other).get(0)).substring(1);
+    }
+}
+
+@SuppressWarnings({ "unused", "unchecked" }) // decompiler fixture
+class Partial {
+    <E extends Number> void toss(final E e, final Map<Integer, Integer> map) {
+    }
+
+    <N> void toss(final Integer e, final Map<String, N> map) {
+    }
+
+    <T extends CharSequence & Serializable, R> List<R> wrap(final T t) {
+        return null;
+    }
+
+    List<String> wrap(final String s) {
+        return null;
+    }
+
+    void partly(final Integer n, final Map<Integer, Integer> map) {
+        this.toss(n, map);
+    }
+
+    int uninferred(final String s) {
+        return ((CharSequence) this.wrap((CharSequence & Serializable) s).get(0)).length();
     }
 }
 
