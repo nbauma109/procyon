@@ -117,6 +117,14 @@ public class GenericsTests extends DecompilerTest {
                 "        Acting<java.io.IOException> g = (Acting<java.io.IOException>) (Acting) acting((Acting<?>) a);",
                 "        return g::act;",
                 "    }",
+                "    static class Both2<X, Y> { X get() { return null; } }",
+                "    static class Pairing extends Both2<Integer, String> { }",
+                "    <T extends Both2<?, ?>> T both2(T t) { return t; }",
+                "    Pairing both2(Pairing p) { return p; }",
+                "    java.util.function.IntSupplier paired(Pairing p) {",
+                "        Both2<Integer, String> two = (Both2<Integer, String>) (Both2) both2((Both2<?, ?>) p);",
+                "        return two::get;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -248,6 +256,15 @@ public class GenericsTests extends DecompilerTest {
             "    Throwing<IOException> postponed(final Acts acts) {\n" +
             "        return ((Acting<IOException>)(Acting)this.acting((Acting)acts))::act;\n" +
             "    }\n" +
+            "    <T extends Both2<?, ?>> T both2(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Pairing both2(final Pairing pairing) {\n" +
+            "        return pairing;\n" +
+            "    }\n" +
+            "    IntSupplier paired(final Pairing pairing) {\n" +
+            "        return ((Both2<Integer, ?>)(Both2)this.both2((Both2)pairing))::get;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -276,6 +293,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    static class Pairing extends Both2<Integer, String> {\n" +
+            "    }\n" +
+            "    static class Both2<X, Y> {\n" +
+            "        X get() {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    interface Throwing<E extends Exception> {\n" +
             "        void run() throws E, Exception;\n" +
@@ -1080,6 +1104,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void separate(final Integer e, final List<List<String>> a, final List<List<Integer>> b) {\n" +
             "        this.apart(e, a, b);\n" +
+            "    }\n" +
+            "    <E extends Number> void under(final E e, final List<String> list) {\n" +
+            "    }\n" +
+            "    <N extends Number> void under(final Integer e, final Collection<? super N> list) {\n" +
+            "    }\n" +
+            "    void below(final Integer e, final List<String> list) {\n" +
+            "        this.under(e, list);\n" +
             "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
@@ -2166,6 +2197,16 @@ class Shared {
 
     void separate(final Integer e, final List<List<String>> a, final List<List<Integer>> b) {
         this.apart(e, a, b);
+    }
+
+    <E extends Number> void under(final E e, final List<String> list) {
+    }
+
+    <N extends Number> void under(final Integer e, final Collection<? super N> list) {
+    }
+
+    void below(final Integer e, final List<String> list) {
+        this.under(e, list);
     }
 
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {
