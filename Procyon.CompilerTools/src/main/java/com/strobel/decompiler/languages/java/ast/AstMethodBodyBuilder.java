@@ -1529,6 +1529,13 @@ public class AstMethodBodyBuilder {
      * Without debug information, the type of a local was inferred from the argument before its widening.
      */
     private void widenVariable(final Variable variable, final Expression value) {
+        if (value instanceof ConditionalExpression) {
+            // Either branch may hold the widened value.
+            widenVariable(variable, ((ConditionalExpression) value).getTrueExpression());
+            widenVariable(variable, ((ConditionalExpression) value).getFalseExpression());
+            return;
+        }
+
         final TypeReference type = value.getUserData(Keys.WIDENED_TYPE);
         final VariableDefinition original = variable.getOriginalVariable();
 
@@ -1809,11 +1816,49 @@ public class AstMethodBodyBuilder {
             if (any(definition.getThrownTypes(), t -> t.isGenericParameter() &&
                                                       t.getSimpleName().equals(variable.getSimpleName()))) {
 
-                for (final TypeReference thrown : descriptor.getThrownTypes()) {
-                    if (!thrown.isGenericParameter() && accepts(variable, thrown)) {
+                for (final TypeReference declared : descriptor.getThrownTypes()) {
+                    final TypeReference thrown = typeArgumentIn(declared, descriptor, functionType);
+
+                    if (thrown != null && accepts(variable, thrown)) {
                         return thrown;
                     }
                 }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Returns a type thrown by the descriptor of a functional interface as seen from that interface, or
+     * {@code null} if it is a type variable without a type argument.
+     */
+    private static TypeReference typeArgumentIn(
+        final TypeReference type,
+        final MethodDefinition descriptor,
+        final TypeReference functionType) {
+
+        if (!type.isGenericParameter()) {
+            return type;
+        }
+
+        final TypeReference declaring = MetadataHelper.asSuper(descriptor.getDeclaringType(), functionType);
+
+        if (!(declaring instanceof IGenericInstance)) {
+            return null;
+        }
+
+        final List<GenericParameter> variables = descriptor.getDeclaringType().getGenericParameters();
+        final List<TypeReference> arguments = ((IGenericInstance) declaring).getTypeArguments();
+
+        for (int i = 0; i < variables.size() && i < arguments.size(); i++) {
+            final TypeReference argument = arguments.get(i);
+
+            if (variables.get(i).getSimpleName().equals(type.getSimpleName()) &&
+                !argument.isWildcardType() &&
+                !argument.isGenericParameter()) {
+
+                return argument;
             }
         }
 
@@ -2636,17 +2681,8 @@ public class AstMethodBodyBuilder {
                 continue;
             }
 
-            final List<TypeReference> targets = ((IGenericInstance) parameterType).getTypeArguments();
-            final List<TypeReference> sources = ((IGenericInstance) asParameterType).getTypeArguments();
-
-            for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
-                if (targets.get(i).isGenericParameter() && !sources.get(i).isWildcardType()) {
-                    final TypeReference bound = bindings.putIfAbsent(targets.get(i).getSimpleName(), sources.get(i));
-
-                    if (bound != null && !MetadataHelper.isSameType(bound, sources.get(i))) {
-                        return false;
-                    }
-                }
+            if (!bind((IGenericInstance) parameterType, (IGenericInstance) asParameterType, bindings)) {
+                return false;
             }
         }
 
@@ -2739,6 +2775,44 @@ public class AstMethodBodyBuilder {
         for (int i = 0, n = parameters.size(); i < n; i++) {
             if (!accepts(candidate.getParameters().get(i).getParameterType(),
                          MetadataHelper.erase(parameters.get(i).getParameterType()))) {
+
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Records the types for which the type variables of a parameter stand, however deeply they are
+     * nested, and tells whether they agree.
+     */
+    private static boolean bind(
+        final IGenericInstance parameter,
+        final IGenericInstance argument,
+        final Map<String, TypeReference> bindings) {
+
+        final List<TypeReference> targets = parameter.getTypeArguments();
+        final List<TypeReference> sources = argument.getTypeArguments();
+
+        for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
+            final TypeReference target = targets.get(i);
+            final TypeReference source = sources.get(i);
+
+            if (source.isWildcardType()) {
+                continue;
+            }
+
+            if (target.isGenericParameter()) {
+                final TypeReference bound = bindings.putIfAbsent(target.getSimpleName(), source);
+
+                if (bound != null && !MetadataHelper.isSameType(bound, source)) {
+                    return false;
+                }
+            }
+            else if (target instanceof IGenericInstance &&
+                     source instanceof IGenericInstance &&
+                     !bind((IGenericInstance) target, (IGenericInstance) source, bindings)) {
 
                 return false;
             }

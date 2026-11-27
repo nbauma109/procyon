@@ -108,6 +108,15 @@ public class GenericsTests extends DecompilerTest {
                 "        Acting<java.io.IOException> d = (Acting<java.io.IOException>) (Acting) acting((Acting<?>) a);",
                 "        return d::act;",
                 "    }",
+                "    int chosen(boolean flag, String s) {",
+                "        CharSequence c = flag ? take((CharSequence) s) : s;",
+                "        return c.length() + c.charAt(0);",
+                "    }",
+                "    interface Throwing<E extends Exception> { void run() throws E; }",
+                "    Throwing<java.io.IOException> postponed(Acts a) {",
+                "        Acting<java.io.IOException> g = (Acting<java.io.IOException>) (Acting) acting((Acting<?>) a);",
+                "        return g::act;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -232,6 +241,13 @@ public class GenericsTests extends DecompilerTest {
             "    Action deferred(final Acts acts) {\n" +
             "        return ((Acting<IOException>)(Acting)this.acting((Acting)acts))::act;\n" +
             "    }\n" +
+            "    int chosen(final boolean b, final String s) {\n" +
+            "        final CharSequence s2 = b ? this.take((CharSequence)s) : s;\n" +
+            "        return s2.length() + s2.charAt(0);\n" +
+            "    }\n" +
+            "    Throwing<IOException> postponed(final Acts acts) {\n" +
+            "        return ((Acting<IOException>)(Acting)this.acting((Acting)acts))::act;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -260,6 +276,9 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    interface Throwing<E extends Exception> {\n" +
+            "        void run() throws E, Exception;\n" +
             "    }\n" +
             "    interface Action {\n" +
             "        void run() throws IOException;\n" +
@@ -1054,6 +1073,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void nested(final Integer e, final List<List<String>> lists) {\n" +
             "        this.deep(e, lists);\n" +
+            "    }\n" +
+            "    <E extends Number> void apart(final E e, final List<List<String>> a, final List<List<Integer>> b) {\n" +
+            "    }\n" +
+            "    <N> void apart(final Integer e, final Collection<List<N>> a, final Collection<List<N>> b) {\n" +
+            "    }\n" +
+            "    void separate(final Integer e, final List<List<String>> a, final List<List<Integer>> b) {\n" +
+            "        this.apart(e, a, b);\n" +
             "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
@@ -2130,6 +2156,16 @@ class Shared {
 
     void nested(final Integer e, final List<List<String>> lists) {
         this.deep(e, lists);
+    }
+
+    <E extends Number> void apart(final E e, final List<List<String>> a, final List<List<Integer>> b) {
+    }
+
+    <N> void apart(final Integer e, final Collection<List<N>> a, final Collection<List<N>> b) {
+    }
+
+    void separate(final Integer e, final List<List<String>> a, final List<List<Integer>> b) {
+        this.apart(e, a, b);
     }
 
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {
