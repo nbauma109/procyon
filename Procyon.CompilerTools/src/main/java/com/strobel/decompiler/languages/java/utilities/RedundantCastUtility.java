@@ -169,7 +169,9 @@ public final class RedundantCastUtility {
         return declared != null &&
                declared.isGenericParameter() &&
                narrowed != null &&
-               bounds.stream().noneMatch(bound -> MetadataHelper.isAssignableFrom(narrowed, bound));
+               (bounds.isEmpty() ||
+                // Whichever variable is accessed, its bound must make the cast redundant.
+                !bounds.stream().allMatch(bound -> MetadataHelper.isAssignableFrom(narrowed, bound)));
     }
 
     @Nullable

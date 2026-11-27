@@ -821,6 +821,24 @@ public class AstMethodBodyBuilder {
                         methodGroup.putUserData(Keys.TYPE_REFERENCE, byteCode.getInferredType());
                     }
 
+                    // The result of a member of a widened receiver only fits the raw functional interface.
+                    final TypeReference returned = declaredType(targetMethod);
+
+                    if (hasInstanceArgument &&
+                        isWidened(arg1) &&
+                        returned != null &&
+                        returned.isGenericParameter() &&
+                        byteCode.getInferredType() instanceof IGenericInstance) {
+
+                        final CastExpression cast = new CastExpression(
+                            _astBuilder.convertType(MetadataHelper.erase(byteCode.getInferredType())),
+                            methodGroup
+                        );
+
+                        cast.putUserData(Keys.RESULT_CAST, true);
+                        return cast;
+                    }
+
                     return methodGroup;
                 }
 
@@ -1480,14 +1498,21 @@ public class AstMethodBodyBuilder {
         final MethodReference method,
         final List<ParameterDefinition> parameters,
         final List<Expression> originals,
+        final Map<Integer, TypeReference> argumentTypes,
         final List<Expression> arguments) {
 
         final Set<String> widened = new HashSet<>();
+        final Map<TypeReference, TypeReference> substitutions = new HashMap<>();
         final MethodDefinition definition = method.resolve();
 
         for (int i = 0; i < arguments.size(); i++) {
-            if (arguments.get(i).getUserData(Keys.SELECTS_OVERLOAD) != null) {
-                widened.addAll(variableChain(definition.getParameters().get(parameters.get(i).getPosition()).getParameterType()));
+            final TypeReference bound = arguments.get(i).getUserData(Keys.SELECTS_OVERLOAD);
+
+            if (bound != null) {
+                final TypeReference variable = definition.getParameters().get(parameters.get(i).getPosition()).getParameterType();
+
+                widened.addAll(variableChain(variable));
+                substitutions.put(variable, bound);
             }
         }
 
@@ -1505,9 +1530,12 @@ public class AstMethodBodyBuilder {
                 element = element.getElementType();
             }
 
+            final TypeReference argumentType = argumentTypes.get(parameters.get(i).getPosition());
+
             if (element instanceof IGenericInstance &&
                 !(original instanceof NullReferenceExpression) &&
-                any(widened, name -> mentions(declared, name))) {
+                any(widened, name -> mentions(declared, name)) &&
+                !remainsCompatible(declared, substitutions, original, argumentType)) {
 
                 final TypeReference rawType = MetadataHelper.erase(declared);
 
@@ -1522,6 +1550,25 @@ public class AstMethodBodyBuilder {
                 arguments.set(i, cast);
             }
         }
+    }
+
+    /** Tells whether an argument can still be passed once the widened variables are substituted. */
+    private static boolean remainsCompatible(
+        final TypeReference declared,
+        final Map<TypeReference, TypeReference> substitutions,
+        final Expression argument,
+        final TypeReference argumentType) {
+
+        if (argumentType == null ||
+            argument instanceof LambdaExpression ||
+            argument instanceof MethodGroupExpression) {
+
+            return false;
+        }
+
+        final TypeReference substituted = TypeSubstitutionVisitor.instance().visit(declared, substitutions);
+
+        return substituted != declared && accepts(substituted, argumentType);
     }
 
     /**
@@ -1957,7 +2004,7 @@ public class AstMethodBodyBuilder {
             }
         }
 
-        reconcileDependentArguments(method, parameters, originals, arguments);
+        reconcileDependentArguments(method, parameters, originals, argumentTypes, arguments);
 
         int first = 0, last = parameterCount - 1;
 
@@ -2199,9 +2246,51 @@ public class AstMethodBodyBuilder {
      */
     private static boolean isApplicable(final MethodReference candidate, final Map<Integer, TypeReference> argumentTypes) {
         return all(
-            argumentTypes.entrySet(),
-            argument -> accepts(candidate.getParameters().get(argument.getKey()).getParameterType(), argument.getValue())
-        );
+                   argumentTypes.entrySet(),
+                   argument -> accepts(candidate.getParameters().get(argument.getKey()).getParameterType(),
+                                       argument.getValue())
+               ) &&
+               bindsConsistently(candidate, argumentTypes);
+    }
+
+    /** Tells whether a type variable shared by the parameters of a method stands for a single type. */
+    private static boolean bindsConsistently(
+        final MethodReference candidate,
+        final Map<Integer, TypeReference> argumentTypes) {
+
+        final Map<String, TypeReference> bindings = new HashMap<>();
+
+        for (final Map.Entry<Integer, TypeReference> argument : argumentTypes.entrySet()) {
+            final TypeReference parameterType = candidate.getParameters().get(argument.getKey()).getParameterType();
+
+            if (!(parameterType instanceof IGenericInstance)) {
+                continue;
+            }
+
+            final TypeDefinition definition = parameterType.resolve();
+            final TypeReference asParameterType = definition != null
+                                                  ? MetadataHelper.asSuper(definition, argument.getValue())
+                                                  : null;
+
+            if (!(asParameterType instanceof IGenericInstance)) {
+                continue;
+            }
+
+            final List<TypeReference> targets = ((IGenericInstance) parameterType).getTypeArguments();
+            final List<TypeReference> sources = ((IGenericInstance) asParameterType).getTypeArguments();
+
+            for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
+                if (targets.get(i).isGenericParameter() && !sources.get(i).isWildcardType()) {
+                    final TypeReference bound = bindings.putIfAbsent(targets.get(i).getSimpleName(), sources.get(i));
+
+                    if (bound != null && !MetadataHelper.isSameType(bound, sources.get(i))) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
     }
 
     /**

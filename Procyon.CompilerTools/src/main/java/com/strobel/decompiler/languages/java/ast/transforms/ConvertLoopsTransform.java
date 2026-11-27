@@ -1043,8 +1043,9 @@ public final class ConvertLoopsTransform extends ContextTrackingVisitor<AstNode>
         final TypeReference type = itemType.toTypeReference();
 
         return bounds != null &&
+               !bounds.isEmpty() &&
                type != null &&
-               bounds.stream().anyMatch(bound -> MetadataHelper.isAssignableFrom(type, bound));
+               bounds.stream().allMatch(bound -> MetadataHelper.isAssignableFrom(type, bound));
     }
 
     public final ForEachStatement transformForEach(final ExpressionStatement node) {

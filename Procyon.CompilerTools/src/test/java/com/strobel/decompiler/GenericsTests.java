@@ -66,6 +66,10 @@ public class GenericsTests extends DecompilerTest {
                 "        CharSequence c = both((CharSequence & java.io.Serializable) s);",
                 "        return c.length() + c.charAt(0);",
                 "    }",
+                "    java.util.function.Supplier<String> supplied(Child c) {",
+                "        Box<String> b = (Box<String>) (Box) pick((Box<?>) c);",
+                "        return b::get;",
+                "    }",
                 "    String looped(Child c, int n) {",
                 "        Box<?> b = c;",
                 "        String s = \"\";",
@@ -131,6 +135,9 @@ public class GenericsTests extends DecompilerTest {
             "    int intersected(final String s) {\n" +
             "        final CharSequence both = this.both((CharSequence & Serializable)s);\n" +
             "        return both.length() + both.charAt(0);\n" +
+            "    }\n" +
+            "    Supplier<String> supplied(final Child child) {\n" +
+            "        return (Supplier)this.pick((Box)child)::get;\n" +
             "    }\n" +
             "    String looped(final Child child, int n) {\n" +
             "        Box pick = child;\n" +
@@ -881,6 +888,39 @@ public class GenericsTests extends DecompilerTest {
             "            final Serializable item = (Serializable)iterator.next();\n" +
             "            System.out.println(item.hashCode());\n" +
             "        }\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testSharedVariablesSeveralBoundsAndCompatibleArguments() {
+        verifyOutput(
+            Shared.class,
+            defaultSettings(),
+            "class Shared {\n" +
+            "    <E extends Number> void toss(final E e, final List<String> a, final List<Integer> b) {\n" +
+            "    }\n" +
+            "    <N> void toss(final Integer e, final Collection<N> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    <T extends Serializable, U extends CharSequence> Coffer<T> pair(final T t, final U u) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    Coffer<String> pair(final String t, final String u) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    <T extends CharSequence> void put(final T t, final Map<? super T, Integer> map) {\n" +
+            "    }\n" +
+            "    void put(final String t, final Map map) {\n" +
+            "    }\n" +
+            "    void shared(final Integer n, final List<String> a, final List<Integer> b) {\n" +
+            "        this.toss(n, a, b);\n" +
+            "    }\n" +
+            "    int several(final String s) {\n" +
+            "        return ((CharSequence)this.pair((Serializable)s, (CharSequence)s).get()).length();\n" +
+            "    }\n" +
+            "    void compatible(final String s, final Map<Object, Integer> map) {\n" +
+            "        this.put((CharSequence)s, map);\n" +
             "    }\n" +
             "}\n"
         );
@@ -1838,6 +1878,41 @@ class Nested2 {
         for (final Serializable item : (List<String>) (List) this.take((CharSequence) s)) {
             System.out.println(item.hashCode());
         }
+    }
+}
+
+@SuppressWarnings({ "unused", "unchecked" }) // decompiler fixture
+class Shared {
+    <E extends Number> void toss(final E e, final List<String> a, final List<Integer> b) {
+    }
+
+    <N> void toss(final Integer e, final Collection<N> a, final Collection<N> b) {
+    }
+
+    <T extends Serializable, U extends CharSequence> Coffer<T> pair(final T t, final U u) {
+        return null;
+    }
+
+    Coffer<String> pair(final String t, final String u) {
+        return null;
+    }
+
+    <T extends CharSequence> void put(final T t, final Map<? super T, Integer> map) {
+    }
+
+    void put(final String t, final Map map) {
+    }
+
+    void shared(final Integer n, final List<String> a, final List<Integer> b) {
+        this.toss(n, a, b);
+    }
+
+    int several(final String s) {
+        return ((CharSequence) this.pair((Serializable) s, (CharSequence) s).get()).length();
+    }
+
+    void compatible(final String s, final Map<Object, Integer> map) {
+        this.put((CharSequence) s, map);
     }
 }
 
