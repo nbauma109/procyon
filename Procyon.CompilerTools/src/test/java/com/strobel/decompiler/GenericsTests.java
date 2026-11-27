@@ -170,6 +170,15 @@ public class GenericsTests extends DecompilerTest {
                 "        Taking<Integer, Integer> r = (Taking<Integer, Integer>) (Taking) taking((Taking<?, ?>) t);",
                 "        return r::get;",
                 "    }",
+                "    static class Dual<X, E extends Exception> { String put(X x) throws E { return null; } String put(CharSequence x) throws E { return null; } }",
+                "    static class Duals extends Dual<String, java.io.IOException> { }",
+                "    <T extends Dual<?, ?>> T dual(T t) { return t; }",
+                "    Duals dual(Duals t) { return t; }",
+                "    interface Put { String run(String s) throws java.io.IOException; }",
+                "    Put dually(Duals t) {",
+                "        Dual<String, java.io.IOException> q = (Dual<String, java.io.IOException>) (Dual) dual((Dual<?, ?>) t);",
+                "        return q::put;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -359,6 +368,15 @@ public class GenericsTests extends DecompilerTest {
             "    Listed<Integer> relisted(final Takes takes) {\n" +
             "        return ((Taking<Integer, Integer>)(Taking)this.taking((Taking)takes))::get;\n" +
             "    }\n" +
+            "    <T extends Dual<?, ?>> T dual(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Duals dual(final Duals duals) {\n" +
+            "        return duals;\n" +
+            "    }\n" +
+            "    Put dually(final Duals duals) {\n" +
+            "        return ((Dual<String, IOException>)(Dual)this.dual((Dual)duals))::put;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -387,6 +405,19 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    interface Put {\n" +
+            "        String run(final String p0) throws IOException;\n" +
+            "    }\n" +
+            "    static class Duals extends Dual<String, IOException> {\n" +
+            "    }\n" +
+            "    static class Dual<X, E extends Exception> {\n" +
+            "        String put(final X x) throws E, Exception {\n" +
+            "            return null;\n" +
+            "        }\n" +
+            "        String put(final CharSequence charSequence) throws E, Exception {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    interface Listed<T> {\n" +
             "        int apply(final List<T> p0);\n" +
@@ -1291,6 +1322,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void doubled(final Integer e, final List<Odder> list) {\n" +
             "        this.twice(e, list);\n" +
+            "    }\n" +
+            "    <E extends Number> void under2(final E e, final List<Odd> list) {\n" +
+            "    }\n" +
+            "    <N extends Comparable<N>> void under2(final Integer e, final Collection<? extends N> list) {\n" +
+            "    }\n" +
+            "    void onlyWild(final Integer e, final List<Odd> list) {\n" +
+            "        this.under2(e, list);\n" +
             "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
@@ -2499,6 +2537,16 @@ class Shared {
 
     void doubled(final Integer e, final List<Odder> list) {
         this.twice(e, list);
+    }
+
+    <E extends Number> void under2(final E e, final List<Odd> list) {
+    }
+
+    <N extends Comparable<N>> void under2(final Integer e, final Collection<? extends N> list) {
+    }
+
+    void onlyWild(final Integer e, final List<Odd> list) {
+        this.under2(e, list);
     }
 
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {

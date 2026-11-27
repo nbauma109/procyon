@@ -844,6 +844,8 @@ public class AstMethodBodyBuilder {
                             byteCode.getInferredType()
                         );
 
+                        typeArguments.putAll(thrownByDescriptor(targetMethod, byteCode.getInferredType()));
+
                         for (final String variable : typeArguments.keySet()) {
                             if (specializeReceiver(methodGroup, declaringType, typeArguments, variable)) {
                                 return methodGroup;
@@ -3030,6 +3032,13 @@ public class AstMethodBodyBuilder {
 
             if (parameterType.isGenericParameter() && !argument.getValue().isPrimitive()) {
                 inferred.putIfAbsent(parameterType.getSimpleName(), argument.getValue());
+            }
+        }
+
+        // Nor does anything else than a lower bound for a variable which only bounds wildcards.
+        for (final Map.Entry<GenericParameter, TypeReference> wildcard : wildcards) {
+            if (!wildcard.getValue().isWildcardType()) {
+                inferred.putIfAbsent(wildcard.getKey().getSimpleName(), wildcard.getValue());
             }
         }
 
