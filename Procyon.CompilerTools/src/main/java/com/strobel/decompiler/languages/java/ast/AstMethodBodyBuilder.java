@@ -750,6 +750,7 @@ public class AstMethodBodyBuilder {
 
             case PutField: {
                 final MemberReferenceExpression fieldReference;
+                final boolean widened = isWidened(arg1);
 
                 if (arg1 instanceof ThisReferenceExpression &&
                     MetadataHelper.isSubType(_context.getCurrentType(), fieldOperand.getDeclaringType()) &&
@@ -762,7 +763,16 @@ public class AstMethodBodyBuilder {
                 }
 
                 fieldReference.putUserData(Keys.MEMBER_REFERENCE, fieldOperand);
-                return new AssignmentExpression(fieldReference, eraseConsumedResult(arg2));
+
+                final Expression value = eraseConsumedResult(arg2);
+
+                return new AssignmentExpression(
+                    fieldReference,
+                    widened && isTypedByClassVariables(fieldOperand)
+                    // Only a raw value still fits a field typed as before the widening.
+                    ? eraseParameterizedResult(declaredType(fieldOperand), value)
+                    : value
+                );
             }
 
             case InvokeSpecial:
@@ -822,7 +832,11 @@ public class AstMethodBodyBuilder {
                     }
 
                     // The result of a member of a widened receiver only fits the raw functional interface.
-                    final TypeReference returned = declaredType(targetMethod);
+                    TypeReference returned = declaredType(targetMethod);
+
+                    while (returned != null && returned.isArray()) {
+                        returned = returned.getElementType();
+                    }
 
                     if (hasInstanceArgument &&
                         isWidened(arg1) &&
@@ -1703,6 +1717,15 @@ public class AstMethodBodyBuilder {
                    variable -> any(definition.getParameters(),
                                    p -> mentions(p.getParameterType(), variable.getSimpleName()))
                );
+    }
+
+    /** Tells whether the type of a field depends on the type variables of its class. */
+    private static boolean isTypedByClassVariables(final FieldReference field) {
+        final FieldDefinition definition = field.resolve();
+
+        return definition != null &&
+               any(definition.getDeclaringType().getGenericParameters(),
+                   variable -> mentions(definition.getFieldType(), variable.getSimpleName()));
     }
 
     /** Marks an expression accessing a value whose type depends on a widened argument. */

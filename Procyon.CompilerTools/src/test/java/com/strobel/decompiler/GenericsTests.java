@@ -74,6 +74,14 @@ public class GenericsTests extends DecompilerTest {
                 "        Keyed<String> k = (Keyed<String>) (Keyed) keyed((Keyed<?>) f);",
                 "        return k::get;",
                 "    }",
+                "    static class Many<X> { X[] all() { return null; } }",
+                "    static class Several extends Many<String> { }",
+                "    <T extends Many<?>> T many(T t) { return t; }",
+                "    Several many(Several s) { return s; }",
+                "    java.util.function.Supplier<String[]> arrays(Several s) {",
+                "        Many<String> m = (Many<String>) (Many) many((Many<?>) s);",
+                "        return m::all;",
+                "    }",
                 "    java.util.function.Supplier<String> supplied(Child c) {",
                 "        Box<String> b = (Box<String>) (Box) pick((Box<?>) c);",
                 "        return b::get;",
@@ -153,6 +161,15 @@ public class GenericsTests extends DecompilerTest {
             "    Function<String, String> applied(final Fixed fixed) {\n" +
             "        return (Function)(Function<String, Object>)this.keyed((Keyed)fixed)::get;\n" +
             "    }\n" +
+            "    <T extends Many<?>> T many(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Several many(final Several several) {\n" +
+            "        return several;\n" +
+            "    }\n" +
+            "    Supplier<String[]> arrays(final Several several) {\n" +
+            "        return (Supplier)this.many((Many)several)::all;\n" +
+            "    }\n" +
             "    Supplier<String> supplied(final Child child) {\n" +
             "        return (Supplier)this.pick((Box)child)::get;\n" +
             "    }\n" +
@@ -172,6 +189,13 @@ public class GenericsTests extends DecompilerTest {
             "    int element(final String s) {\n" +
             "        final CharSequence s2 = this.array((CharSequence)s)[0];\n" +
             "        return s2.length() + s2.charAt(0);\n" +
+            "    }\n" +
+            "    static class Several extends Many<String> {\n" +
+            "    }\n" +
+            "    static class Many<X> {\n" +
+            "        X[] all() {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    static class Fixed extends Keyed<String> {\n" +
             "    }\n" +
@@ -971,6 +995,25 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    boolean member(final String s, final List<String> list) {\n" +
             "        return ((List)this.wrap((CharSequence)s)).addAll(list);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testFieldsWrittenThroughWidenedReceivers() {
+        verifyOutput(
+            Writes.class,
+            defaultSettings(),
+            "class Writes {\n" +
+            "    <T extends CharSequence> Crate<T> crate(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    Crate<String> crate(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    void write(final String s, final List<String> list) {\n" +
+            "        this.crate((CharSequence)s).values = (List)list;\n" +
             "    }\n" +
             "}\n"
         );
@@ -1988,6 +2031,21 @@ class Inputs {
 
     boolean member(final String s, final List<String> list) {
         return ((List<String>) (List) this.wrap((CharSequence) s)).addAll(list);
+    }
+}
+
+@SuppressWarnings({ "unused", "unchecked" }) // decompiler fixture
+class Writes {
+    <T extends CharSequence> Crate<T> crate(final T t) {
+        return null;
+    }
+
+    Crate<String> crate(final String s) {
+        return null;
+    }
+
+    void write(final String s, final List<String> list) {
+        ((Crate<String>) (Crate) this.crate((CharSequence) s)).values = list;
     }
 }
 
