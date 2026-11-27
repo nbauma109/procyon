@@ -853,9 +853,10 @@ public class AstMethodBodyBuilder {
 
                     // A widened receiver would throw the bound of its type variable.
                     if (hasInstanceArgument && isWidened(arg1)) {
-                        final TypeReference thrown = thrownByDescriptor(targetMethod, byteCode.getInferredType());
+                        final Map<String, TypeReference> thrown = thrownByDescriptor(targetMethod,
+                                                                                    byteCode.getInferredType());
 
-                        if (thrown != null) {
+                        if (!thrown.isEmpty()) {
                             final Object signature = callSite.getBootstrapArguments().get(2);
                             final Map<String, TypeReference> typeArguments =
                                 signature instanceof IMethodSignature
@@ -864,13 +865,13 @@ public class AstMethodBodyBuilder {
                                                         byteCode.getInferredType())
                                 : new HashMap<String, TypeReference>();
 
-                            typeArguments.put(thrownClassVariable(targetMethod), thrown);
+                            typeArguments.putAll(thrown);
 
                             if (specializeReceiver(
                                     methodGroup,
                                     declaringType,
                                     typeArguments,
-                                    thrownClassVariable(targetMethod)
+                                    thrown.keySet().iterator().next()
                                 )) {
 
                                 return methodGroup;
@@ -1301,11 +1302,12 @@ public class AstMethodBodyBuilder {
             widenedReceiver = isWidened(receiver);
 
             // A widened receiver would throw the bound of its type variable.
-            final TypeReference thrown = widenedReceiver ? thrownTypeArgument(methodReference, byteCode.getOffset())
-                                                         : null;
+            final Map<String, TypeReference> thrown =
+                widenedReceiver ? thrownTypeArguments(methodReference, byteCode.getOffset())
+                                : Collections.<String, TypeReference>emptyMap();
             final boolean takesVariables = widenedReceiver && takesClassTypeVariables(methodReference);
 
-            if (takesVariables && thrown == null) {
+            if (takesVariables && thrown.isEmpty()) {
                 // Only a raw receiver still takes the arguments typed as before the widening.
                 target = rawReceiver(receiver, declaringType);
             }
@@ -1314,15 +1316,15 @@ public class AstMethodBodyBuilder {
 
                 target = discarded;
 
-                if (thrown != null) {
+                if (!thrown.isEmpty()) {
                     final Map<String, TypeReference> typeArguments = argumentTypeArguments(methodReference, arguments);
 
-                    typeArguments.put(thrownClassVariable(methodReference), thrown);
+                    typeArguments.putAll(thrown);
                     target = specializedReceiver(
                         discarded,
                         declaringType,
                         typeArguments,
-                        thrownClassVariable(methodReference)
+                        thrown.keySet().iterator().next()
                     );
                 }
 
@@ -1960,83 +1962,86 @@ public class AstMethodBodyBuilder {
         return cast;
     }
 
-    /** Returns the name of the type variable of its class which a method throws, or {@code null}. */
-    private static String thrownClassVariable(final MethodReference method) {
+    /** Returns the type variables of its class which a method throws. */
+    private static List<GenericParameter> thrownClassVariables(final MethodReference method) {
         final MethodDefinition definition = method.resolve();
+        final List<GenericParameter> variables = new ArrayList<>();
 
-        if (definition == null) {
-            return null;
-        }
+        if (definition != null) {
+            for (final GenericParameter variable : definition.getDeclaringType().getGenericParameters()) {
+                if (any(definition.getThrownTypes(), t -> t.isGenericParameter() &&
+                                                          t.getSimpleName().equals(variable.getSimpleName()))) {
 
-        for (final GenericParameter variable : definition.getDeclaringType().getGenericParameters()) {
-            if (any(definition.getThrownTypes(), t -> t.isGenericParameter() &&
-                                                      t.getSimpleName().equals(variable.getSimpleName()))) {
-
-                return variable.getSimpleName();
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Returns the exception which the type variable thrown by an invoked method may stand for: the one
-     * caught around the invocation, or else the first one declared by the method being decompiled, or
-     * {@code null}.
-     */
-    private TypeReference thrownTypeArgument(final MethodReference method, final int offset) {
-        final MethodDefinition definition = method.resolve();
-
-        if (definition == null) {
-            return null;
-        }
-
-        for (final GenericParameter variable : definition.getDeclaringType().getGenericParameters()) {
-            if (any(definition.getThrownTypes(), t -> t.isGenericParameter() &&
-                                                      t.getSimpleName().equals(variable.getSimpleName()))) {
-
-                final TypeReference caught = caughtType(variable, offset);
-
-                if (caught != null) {
-                    return caught;
+                    variables.add(variable);
                 }
-
-                // Any declared exception will do, as the cast through the raw type is not checked.
-                return firstOrDefault(_context.getCurrentMethod().getThrownTypes(),
-                                      thrown -> accepts(variable, thrown));
             }
         }
 
-        return null;
+        return variables;
     }
 
     /**
-     * Returns the exception of a functional interface which the type variable thrown by a referenced
-     * method may stand for, or {@code null}.
+     * Returns the exceptions for which the type variables thrown by an invoked method may stand: those
+     * caught around the invocation, or else those declared by the method being decompiled.
      */
-    private static TypeReference thrownByDescriptor(final MethodReference method, final TypeReference functionType) {
-        final MethodDefinition definition = method.resolve();
+    private Map<String, TypeReference> thrownTypeArguments(final MethodReference method, final int offset) {
+        final List<TypeReference> candidates = caughtTypes(offset);
+
+        candidates.addAll(_context.getCurrentMethod().getThrownTypes());
+
+        return assignExceptions(thrownClassVariables(method), candidates);
+    }
+
+    /**
+     * Returns the exceptions of a functional interface for which the type variables thrown by a
+     * referenced method may stand.
+     */
+    private static Map<String, TypeReference> thrownByDescriptor(
+        final MethodReference method,
+        final TypeReference functionType) {
+
         final MethodDefinition descriptor = functionType != null ? descriptorOf(functionType.resolve()) : null;
+        final List<TypeReference> candidates = new ArrayList<>();
 
-        if (definition == null || descriptor == null) {
-            return null;
-        }
+        if (descriptor != null) {
+            for (final TypeReference declared : descriptor.getThrownTypes()) {
+                final TypeReference thrown = typeArgumentIn(declared, descriptor, functionType);
 
-        for (final GenericParameter variable : definition.getDeclaringType().getGenericParameters()) {
-            if (any(definition.getThrownTypes(), t -> t.isGenericParameter() &&
-                                                      t.getSimpleName().equals(variable.getSimpleName()))) {
-
-                for (final TypeReference declared : descriptor.getThrownTypes()) {
-                    final TypeReference thrown = typeArgumentIn(declared, descriptor, functionType);
-
-                    if (thrown != null && accepts(variable, thrown)) {
-                        return thrown;
-                    }
+                if (thrown != null) {
+                    candidates.add(thrown);
                 }
             }
         }
 
-        return null;
+        return assignExceptions(thrownClassVariables(method), candidates);
+    }
+
+    /**
+     * Gives each variable an exception which it accepts, a different one where possible.  Any of them
+     * will do, as a cast through a raw type is not checked.
+     */
+    private static Map<String, TypeReference> assignExceptions(
+        final List<GenericParameter> variables,
+        final List<TypeReference> candidates) {
+
+        final Map<String, TypeReference> assigned = new LinkedHashMap<>();
+
+        for (final GenericParameter variable : variables) {
+            TypeReference exception = firstOrDefault(
+                candidates,
+                candidate -> accepts(variable, candidate) && !assigned.containsValue(candidate)
+            );
+
+            if (exception == null) {
+                exception = firstOrDefault(candidates, candidate -> accepts(variable, candidate));
+            }
+
+            if (exception != null) {
+                assigned.put(variable.getSimpleName(), exception);
+            }
+        }
+
+        return assigned;
     }
 
     /**
@@ -2049,7 +2054,25 @@ public class AstMethodBodyBuilder {
         final TypeReference functionType) {
 
         if (!type.isGenericParameter()) {
-            return type;
+            if (!type.containsGenericParameters()) {
+                return type;
+            }
+
+            final TypeReference declaring = MetadataHelper.asSuper(descriptor.getDeclaringType(), functionType);
+
+            if (!(declaring instanceof IGenericInstance)) {
+                return null;
+            }
+
+            final Map<TypeReference, TypeReference> substitutions = new HashMap<>();
+            final List<GenericParameter> parameters = descriptor.getDeclaringType().getGenericParameters();
+            final List<TypeReference> typeArguments = ((IGenericInstance) declaring).getTypeArguments();
+
+            for (int i = 0; i < parameters.size() && i < typeArguments.size(); i++) {
+                substitutions.put(parameters.get(i), typeArguments.get(i));
+            }
+
+            return TypeSubstitutionVisitor.instance().visit(type, substitutions);
         }
 
         final TypeReference declaring = MetadataHelper.asSuper(descriptor.getDeclaringType(), functionType);
@@ -2098,25 +2121,23 @@ public class AstMethodBodyBuilder {
         return null;
     }
 
-    /** Returns the type of the innermost handler around an instruction which a type variable accepts. */
-    private TypeReference caughtType(final GenericParameter variable, final int offset) {
+    /** Returns the types of the handlers around an instruction, innermost first. */
+    private List<TypeReference> caughtTypes(final int offset) {
         final MethodBody body = _context.getCurrentMethod().getBody();
+        final List<TypeReference> types = new ArrayList<>();
 
-        if (body == null) {
-            return null;
-        }
+        if (body != null) {
+            for (final ExceptionHandler handler : body.getExceptionHandlers()) {
+                if (handler.isCatch() &&
+                    handler.getTryBlock().getFirstInstruction().getOffset() <= offset &&
+                    offset <= handler.getTryBlock().getLastInstruction().getOffset()) {
 
-        for (final ExceptionHandler handler : body.getExceptionHandlers()) {
-            if (handler.isCatch() &&
-                handler.getTryBlock().getFirstInstruction().getOffset() <= offset &&
-                offset <= handler.getTryBlock().getLastInstruction().getOffset() &&
-                accepts(variable, handler.getCatchType())) {
-
-                return handler.getCatchType();
+                    types.add(handler.getCatchType());
+                }
             }
         }
 
-        return null;
+        return types;
     }
 
     /**
@@ -2205,13 +2226,24 @@ public class AstMethodBodyBuilder {
         for (int i = 0; i < arguments.size() && i < parameters.size(); i++) {
             final TypeReference declared = parameters.get(i).getParameterType();
 
-            if (declared.isGenericParameter() &&
-                ((GenericParameter) declared).getOwner() instanceof TypeReference) {
+            TypeReference element = declared;
+            int rank = 0;
 
-                final CastExpression cast = new CastExpression(
-                    _astBuilder.convertType(MetadataHelper.erase(MetadataHelper.getUpperBound(declared))),
-                    arguments.get(i)
-                );
+            while (element.isArray()) {
+                element = element.getElementType();
+                rank++;
+            }
+
+            if (element.isGenericParameter() &&
+                ((GenericParameter) element).getOwner() instanceof TypeReference) {
+
+                TypeReference erased = MetadataHelper.erase(MetadataHelper.getUpperBound(element));
+
+                while (rank-- > 0) {
+                    erased = erased.makeArrayType();
+                }
+
+                final CastExpression cast = new CastExpression(_astBuilder.convertType(erased), arguments.get(i));
 
                 cast.putUserData(Keys.RESULT_CAST, true);
                 arguments.set(i, cast);

@@ -4,6 +4,7 @@ import com.strobel.decompiler.fixtures.OverloadsElsewhere;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.Serializable;
+import java.sql.SQLException;
 import java.util.stream.Stream;
 import java.util.function.Supplier;
 import java.util.function.Consumer;
@@ -163,6 +164,11 @@ public class GenericsTests extends DecompilerTest {
                 "    java.util.function.Function<String, String> putting(Twins t) {",
                 "        Twin<String> w2 = (Twin<String>) (Twin) twin((Twin<?>) t);",
                 "        return w2::put;",
+                "    }",
+                "    interface Listed<T> { int apply(java.util.List<T> list); }",
+                "    Listed<Integer> relisted(Takes t) {",
+                "        Taking<Integer, Integer> r = (Taking<Integer, Integer>) (Taking) taking((Taking<?, ?>) t);",
+                "        return r::get;",
                 "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
@@ -350,6 +356,9 @@ public class GenericsTests extends DecompilerTest {
             "    Function<String, String> putting(final Twins twins) {\n" +
             "        return ((Twin<String>)(Twin)this.twin((Twin)twins))::put;\n" +
             "    }\n" +
+            "    Listed<Integer> relisted(final Takes takes) {\n" +
+            "        return ((Taking<Integer, Integer>)(Taking)this.taking((Taking)takes))::get;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -378,6 +387,9 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    interface Listed<T> {\n" +
+            "        int apply(final List<T> p0);\n" +
             "    }\n" +
             "    static class Twins extends Twin<String> {\n" +
             "    }\n" +
@@ -1383,6 +1395,18 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    List<String> dependent(final String s) {\n" +
             "        return (List)this.listed((CharSequence)s);\n" +
+            "    }\n" +
+            "    void both(final Failing failing) throws IOException, SQLException {\n" +
+            "        ((Failures<IOException, SQLException>)(Failures)this.failures((Failures)failing)).act();\n" +
+            "    }\n" +
+            "    <T extends Failures<?, ?>> T failures(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Failing failures(final Failing failing) {\n" +
+            "        return failing;\n" +
+            "    }\n" +
+            "    void arrayMember(final String s, final String[] array) {\n" +
+            "        ((Slot)this.slot((CharSequence)s)).fill((Object[])array);\n" +
             "    }\n" +
             "    void element(final String s, final List<String> list) {\n" +
             "        ((List[])(List[])this.arrays((CharSequence)s))[0] = list;\n" +
@@ -2597,6 +2621,22 @@ class Writes {
         return (List<String>) (List) this.<CharSequence, List<CharSequence>>listed((CharSequence) s);
     }
 
+    void both(final Failing failing) throws IOException, SQLException {
+        ((Failures<IOException, SQLException>) (Failures) this.failures((Failures<?, ?>) failing)).act();
+    }
+
+    <T extends Failures<?, ?>> T failures(final T t) {
+        return t;
+    }
+
+    Failing failures(final Failing failing) {
+        return failing;
+    }
+
+    void arrayMember(final String s, final String[] array) {
+        ((Slot<String>) (Slot) this.slot((CharSequence) s)).fill(array);
+    }
+
     void element(final String s, final List<String> list) {
         ((List<String>[]) (List[]) this.arrays((CharSequence) s))[0] = list;
     }
@@ -2653,6 +2693,21 @@ class Slot<X> {
 
     void put(final CharSequence x) {
     }
+
+    void fill(final X[] x) {
+    }
+
+    void fill(final CharSequence[] x) {
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+abstract class Failures<E extends Exception, F extends Exception> {
+    abstract void act() throws E, F;
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+abstract class Failing extends Failures<IOException, SQLException> {
 }
 
 @SuppressWarnings("unused") // decompiler fixture
