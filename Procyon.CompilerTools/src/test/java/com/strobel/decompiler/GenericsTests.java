@@ -1239,6 +1239,13 @@ public class GenericsTests extends DecompilerTest {
             "    void alone(final Integer e, final Odd odd) {\n" +
             "        this.lone(e, odd);\n" +
             "    }\n" +
+            "    <E extends Number> void ranged(final E e, final List<String> a, final List<Integer> b) {\n" +
+            "    }\n" +
+            "    <N> void ranged(final Integer e, final Collection<? extends N> a, final Collection<? super N> b) {\n" +
+            "    }\n" +
+            "    void between(final Integer e, final List<String> a, final List<Integer> b) {\n" +
+            "        this.ranged(e, a, b);\n" +
+            "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
             "    <N> void add(final Integer e, final Collection<N> list, final N n) {\n" +
@@ -1324,6 +1331,24 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void member(final String s) {\n" +
             "        ((Slot)this.slot((CharSequence)s)).put((Object)s);\n" +
+            "    }\n" +
+            "    <T extends Duo<?, ?>> T duo(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Pair2 duo(final Pair2 pair) {\n" +
+            "        return pair;\n" +
+            "    }\n" +
+            "    void both(final Pair2 pair, final String s) throws IOException {\n" +
+            "        ((Duo<String, IOException>)(Duo)this.duo((Duo)pair)).act(s);\n" +
+            "    }\n" +
+            "    <T extends CharSequence, U extends List<T>> U listed(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<String> listed(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<String> dependent(final String s) {\n" +
+            "        return (List)this.listed((CharSequence)s);\n" +
             "    }\n" +
             "    void element(final String s, final List<String> list) {\n" +
             "        ((List[])(List[])this.arrays((CharSequence)s))[0] = list;\n" +
@@ -2398,6 +2423,16 @@ class Shared {
         this.lone(e, odd);
     }
 
+    <E extends Number> void ranged(final E e, final List<String> a, final List<Integer> b) {
+    }
+
+    <N> void ranged(final Integer e, final Collection<? extends N> a, final Collection<? super N> b) {
+    }
+
+    void between(final Integer e, final List<String> a, final List<Integer> b) {
+        this.ranged(e, a, b);
+    }
+
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {
     }
 
@@ -2494,6 +2529,30 @@ class Writes {
         ((Slot<String>) (Slot) this.slot((CharSequence) s)).put(s);
     }
 
+    <T extends Duo<?, ?>> T duo(final T t) {
+        return t;
+    }
+
+    Pair2 duo(final Pair2 pair) {
+        return pair;
+    }
+
+    void both(final Pair2 pair, final String s) throws IOException {
+        ((Duo<String, IOException>) (Duo) this.duo((Duo<?, ?>) pair)).act(s);
+    }
+
+    <T extends CharSequence, U extends List<T>> U listed(final T t) {
+        return null;
+    }
+
+    List<String> listed(final String s) {
+        return null;
+    }
+
+    List<String> dependent(final String s) {
+        return (List<String>) (List) this.<CharSequence, List<CharSequence>>listed((CharSequence) s);
+    }
+
     void element(final String s, final List<String> list) {
         ((List<String>[]) (List[]) this.arrays((CharSequence) s))[0] = list;
     }
@@ -2550,6 +2609,15 @@ class Slot<X> {
 
     void put(final CharSequence x) {
     }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+abstract class Duo<X, E extends Exception> {
+    abstract void act(X x) throws E;
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+abstract class Pair2 extends Duo<String, IOException> {
 }
 
 @SuppressWarnings("unused") // decompiler fixture

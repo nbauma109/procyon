@@ -1293,14 +1293,19 @@ public class AstMethodBodyBuilder {
             else {
                 final Expression discarded = discardResultCast(receiver);
 
-                target = thrown != null
-                         ? specializedReceiver(
-                             discarded,
-                             declaringType,
-                             Collections.singletonMap(thrownClassVariable(methodReference), thrown),
-                             thrownClassVariable(methodReference)
-                         )
-                         : discarded;
+                target = discarded;
+
+                if (thrown != null) {
+                    final Map<String, TypeReference> typeArguments = argumentTypeArguments(methodReference, arguments);
+
+                    typeArguments.put(thrownClassVariable(methodReference), thrown);
+                    target = specializedReceiver(
+                        discarded,
+                        declaringType,
+                        typeArguments,
+                        thrownClassVariable(methodReference)
+                    );
+                }
 
                 if (takesVariables && target == discarded) {
                     target = rawReceiver(discarded, declaringType);
@@ -1440,7 +1445,13 @@ public class AstMethodBodyBuilder {
                     }
                 }
 
-                return eraseParameterizedResult(methodReference.resolve().getReturnType(), invocation);
+                final MethodDefinition definition = methodReference.resolve();
+                final TypeReference dependentBound = dependentResultBound(definition, adjustedArguments);
+
+                return eraseParameterizedResult(
+                    dependentBound != null ? dependentBound : definition.getReturnType(),
+                    invocation
+                );
             }
         }
 
@@ -1829,6 +1840,32 @@ public class AstMethodBodyBuilder {
         if (variable.isGenericParameter()) {
             arguments.put(variable.getSimpleName(), resultTypeArgument(declared, actual));
         }
+    }
+
+    /**
+     * Returns the types for which the type variables of a class stand, as far as the arguments of one of
+     * its methods determine them.
+     */
+    private Map<String, TypeReference> argumentTypeArguments(
+        final MethodReference method,
+        final List<Expression> arguments) {
+
+        final MethodDefinition definition = method.resolve();
+        final JavaResolver resolver = new JavaResolver(_context);
+        final Map<String, TypeReference> typeArguments = new HashMap<>();
+
+        for (int i = 0; i < arguments.size() && i < definition.getParameters().size(); i++) {
+            final ResolveResult argument = resolver.apply(arguments.get(i));
+
+            if (argument != null && argument.getType() != null) {
+                final TypeReference declared = definition.getParameters().get(i).getParameterType();
+
+                addTypeArgument(typeArguments, declared, argument.getType());
+                addNestedTypeArguments(typeArguments, declared, argument.getType());
+            }
+        }
+
+        return typeArguments;
     }
 
     private boolean specializeReceiver(
@@ -2424,7 +2461,53 @@ public class AstMethodBodyBuilder {
             }
         }
 
-        return typeArguments;
+        // Types which depend on a widened variable are left to the inference of the compiler.
+        return dependentVariables(definition, arguments).isEmpty() ? typeArguments
+                                                                   : Collections.<AstType>emptyList();
+    }
+
+    /** Returns the type variables of a method whose parameterized bounds mention a widened one. */
+    private static List<GenericParameter> dependentVariables(
+        final MethodDefinition method,
+        final List<Expression> arguments) {
+
+        final Set<String> widened = new HashSet<>();
+
+        for (int i = 0; i < arguments.size(); i++) {
+            if (arguments.get(i).getUserData(Keys.SELECTS_OVERLOAD) != null) {
+                widened.addAll(variableChain(method.getParameters().get(i).getParameterType()));
+            }
+        }
+
+        final List<GenericParameter> dependent = new ArrayList<>();
+
+        for (final GenericParameter variable : method.getGenericParameters()) {
+            if (!widened.contains(variable.getSimpleName()) &&
+                variable.hasExtendsBound() &&
+                variable.getExtendsBound() instanceof IGenericInstance &&
+                any(widened, name -> mentions(variable.getExtendsBound(), name))) {
+
+                dependent.add(variable);
+            }
+        }
+
+        return dependent;
+    }
+
+    /** Returns the bound of a result whose type depends on a widened variable, or {@code null}. */
+    private static TypeReference dependentResultBound(
+        final MethodDefinition method,
+        final List<Expression> arguments) {
+
+        final TypeReference returned = method.getReturnType();
+
+        for (final GenericParameter variable : dependentVariables(method, arguments)) {
+            if (returned.isGenericParameter() && returned.getSimpleName().equals(variable.getSimpleName())) {
+                return variable.getExtendsBound();
+            }
+        }
+
+        return null;
     }
 
     private static boolean isInferredFromArguments(final GenericParameter variable, final MethodDefinition method) {
@@ -2906,6 +2989,11 @@ public class AstMethodBodyBuilder {
             final TypeReference source = wildcard.getValue();
 
             if (bound == null) {
+                // Without an exact type, every lower bound must still be within every upper one.
+                if (!source.isWildcardType() && !isWithinUpperBounds(source, wildcard.getKey(), wildcards)) {
+                    return false;
+                }
+
                 continue;
             }
 
@@ -3061,6 +3149,26 @@ public class AstMethodBodyBuilder {
         }
 
         return true;
+    }
+
+    /** Tells whether a lower bound of a type variable is a subtype of each of its upper bounds. */
+    private static boolean isWithinUpperBounds(
+        final TypeReference lower,
+        final GenericParameter variable,
+        final List<Map.Entry<GenericParameter, TypeReference>> wildcards) {
+
+        return all(
+            wildcards,
+            wildcard -> {
+                final TypeReference upper = wildcard.getValue();
+
+                return !wildcard.getKey().getSimpleName().equals(variable.getSimpleName()) ||
+                       !upper.isWildcardType() ||
+                       !upper.hasSuperBound() ||
+                       upper.getSuperBound().isWildcardType() ||
+                       MetadataHelper.isAssignableFrom(upper.getSuperBound(), lower);
+            }
+        );
     }
 
     /**
