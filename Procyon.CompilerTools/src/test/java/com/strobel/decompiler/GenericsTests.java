@@ -761,6 +761,41 @@ public class GenericsTests extends DecompilerTest {
     }
 
     @Test
+    public void testParameterizedBoundsRawArgumentsAndConditionalReceivers() {
+        verifyOutput(
+            Forked.class,
+            defaultSettings(),
+            "class Forked {\n" +
+            "    <E extends Number> void toss(final E e, final List<Integer> list) {\n" +
+            "    }\n" +
+            "    <N extends Collection<String>> void toss(final Integer e, final N n) {\n" +
+            "    }\n" +
+            "    <T extends CharSequence, R> List<R> wrap(final T t, final Map<T, R> map) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<CharSequence> wrap(final String s, final Map<String, CharSequence> map) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    <T extends CharSequence> List<T> single(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<String> single(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    void bounded(final Integer n, final List<Integer> list) {\n" +
+            "        this.toss(n, list);\n" +
+            "    }\n" +
+            "    int raw(final String s, final Map<String, CharSequence> map) {\n" +
+            "        return ((CharSequence)this.wrap((CharSequence)s, (Map)map).get(0)).length();\n" +
+            "    }\n" +
+            "    String chosen(final boolean flag, final String s, final List<String> other) {\n" +
+            "        return ((String)(flag ? this.single((CharSequence)s) : other).get(0)).substring(1);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
     public void testNoCastToAnInaccessibleResultType() {
         verifyOutput(
             HiddenResult.class,
@@ -1623,6 +1658,43 @@ class Shadows {
 
     void direct(final Integer n) {
         this.toss(n, "x");
+    }
+}
+
+@SuppressWarnings({ "unused", "unchecked" }) // decompiler fixture
+class Forked {
+    <E extends Number> void toss(final E e, final List<Integer> list) {
+    }
+
+    <N extends Collection<String>> void toss(final Integer e, final N n) {
+    }
+
+    <T extends CharSequence, R> List<R> wrap(final T t, final Map<T, R> map) {
+        return null;
+    }
+
+    List<CharSequence> wrap(final String s, final Map<String, CharSequence> map) {
+        return null;
+    }
+
+    <T extends CharSequence> List<T> single(final T t) {
+        return null;
+    }
+
+    List<String> single(final String s) {
+        return null;
+    }
+
+    void bounded(final Integer n, final List<Integer> list) {
+        this.toss(n, list);
+    }
+
+    int raw(final String s, final Map<String, CharSequence> map) {
+        return ((CharSequence) this.wrap((CharSequence) s, (Map) map).get(0)).length();
+    }
+
+    String chosen(final boolean flag, final String s, final List<String> other) {
+        return ((String) (flag ? (List) this.single((CharSequence) s) : other).get(0)).substring(1);
     }
 }
 

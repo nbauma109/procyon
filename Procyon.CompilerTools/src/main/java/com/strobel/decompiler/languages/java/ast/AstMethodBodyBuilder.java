@@ -1271,13 +1271,7 @@ public class AstMethodBodyBuilder {
 
             if (widened) {
                 invocation.putUserData(Keys.MEMBER_REFERENCE, methodReference);
-                invocation.putUserData(
-                    Keys.WIDENED_BOUNDS,
-                    adjustedArguments.stream()
-                                     .map(a -> a.getUserData(Keys.SELECTS_OVERLOAD))
-                                     .filter(Objects::nonNull)
-                                     .collect(Collectors.toList())
-                );
+                invocation.putUserData(Keys.WIDENED_BOUNDS, widenedBounds(methodReference.resolve(), adjustedArguments));
 
                 final TypeReference resultType = widenedResultType(methodReference.resolve(), adjustedArguments);
 
@@ -1496,6 +1490,28 @@ public class AstMethodBodyBuilder {
         return cast;
     }
 
+    /**
+     * Returns the bounds to which the arguments were widened.  None is known of the result when another
+     * argument is passed raw, as the compiler then erases it.
+     */
+    private static List<TypeReference> widenedBounds(final MethodDefinition method, final List<Expression> arguments) {
+        final List<TypeReference> bounds = new ArrayList<>();
+
+        for (int i = 0; i < arguments.size(); i++) {
+            final TypeReference bound = arguments.get(i).getUserData(Keys.SELECTS_OVERLOAD);
+
+            if (bound != null) {
+                if (!method.getParameters().get(i).getParameterType().isGenericParameter()) {
+                    return Collections.emptyList();
+                }
+
+                bounds.add(bound);
+            }
+        }
+
+        return bounds;
+    }
+
     /** Marks an expression accessing a value whose type depends on a widened argument. */
     private static void markWidened(final Expression expression, final Expression source) {
         expression.putUserData(Keys.WIDENED_RECEIVER, true);
@@ -1504,6 +1520,12 @@ public class AstMethodBodyBuilder {
 
     /** Tells whether the type of an expression depends on a widened argument. */
     private static boolean isWidened(final Expression expression) {
+        if (expression instanceof ConditionalExpression) {
+            final ConditionalExpression conditional = (ConditionalExpression) expression;
+
+            return isWidened(conditional.getTrueExpression()) || isWidened(conditional.getFalseExpression());
+        }
+
         return expression.getUserData(Keys.RESULT_CAST) != null ||
                expression.getUserData(Keys.WIDENED_RECEIVER) != null;
     }
@@ -1601,6 +1623,26 @@ public class AstMethodBodyBuilder {
      * or where its members or elements are accessed, as their types would be erased too.
      */
     private static Expression discardResultCast(final Expression expression) {
+        if (expression instanceof ConditionalExpression) {
+            final ConditionalExpression conditional = (ConditionalExpression) expression;
+            final Expression whenTrue = conditional.getTrueExpression();
+            final Expression whenFalse = conditional.getFalseExpression();
+
+            whenTrue.remove();
+            whenFalse.remove();
+
+            final Expression first = discardResultCast(whenTrue);
+            final Expression second = discardResultCast(whenFalse);
+            final List<TypeReference> bounds = first.getUserData(Keys.WIDENED_BOUNDS);
+
+            conditional.setTrueExpression(first);
+            conditional.setFalseExpression(second);
+            conditional.putUserData(Keys.WIDENED_BOUNDS,
+                                    bounds != null ? bounds : second.getUserData(Keys.WIDENED_BOUNDS));
+
+            return conditional;
+        }
+
         if (expression.getUserData(Keys.RESULT_CAST) == null) {
             return expression;
         }
@@ -2195,7 +2237,9 @@ public class AstMethodBodyBuilder {
             return all(
                 typesOf(MetadataHelper.getUpperBound(parameterType)),
                 bound -> bound.isGenericParameter() ||
-                         MetadataHelper.isAssignableFrom(MetadataHelper.erase(bound), boxed)
+                         (bound.containsGenericParameters()
+                          ? MetadataHelper.isAssignableFrom(MetadataHelper.erase(bound), boxed)
+                          : accepts(bound, boxed))
             );
         }
 
