@@ -759,6 +759,10 @@ public class AstMethodBodyBuilder {
 
                     fieldReference = new SuperReferenceExpression(arg1.getOffset()).member(fieldOperand.getName());
                 }
+                else if (widened && hasWildcardResult(arg1) && isTypedByClassVariables(fieldOperand)) {
+                    // Nothing can be assigned to a field typed by the capture of a wildcard.
+                    fieldReference = writableReceiver(arg1, fieldOperand, arg2).member(fieldOperand.getName());
+                }
                 else {
                     fieldReference = discardResultCast(arg1).member(fieldOperand.getName());
                 }
@@ -1586,6 +1590,24 @@ public class AstMethodBodyBuilder {
         return names;
     }
 
+    /** Returns the widened type of a value, which may come from either branch of nested conditionals. */
+    private static TypeReference widenedTypeOf(final Expression value) {
+        if (!(value instanceof ConditionalExpression)) {
+            return value.getUserData(Keys.WIDENED_TYPE);
+        }
+
+        final TypeReference first = widenedTypeOf(((ConditionalExpression) value).getTrueExpression());
+        final TypeReference second = widenedTypeOf(((ConditionalExpression) value).getFalseExpression());
+
+        if (first == null || second != null && MetadataHelper.isAssignableFrom(second, first)) {
+            return second;
+        }
+
+        return second == null || MetadataHelper.isAssignableFrom(first, second)
+               ? first
+               : MetadataHelper.findCommonSuperType(first, second);
+    }
+
     /**
      * Without debug information, the type of a local was inferred from the argument before its widening.
      */
@@ -1593,8 +1615,8 @@ public class AstMethodBodyBuilder {
         if (value instanceof ConditionalExpression) {
             final Expression whenTrue = ((ConditionalExpression) value).getTrueExpression();
             final Expression whenFalse = ((ConditionalExpression) value).getFalseExpression();
-            final TypeReference first = whenTrue.getUserData(Keys.WIDENED_TYPE);
-            final TypeReference second = whenFalse.getUserData(Keys.WIDENED_TYPE);
+            final TypeReference first = widenedTypeOf(whenTrue);
+            final TypeReference second = widenedTypeOf(whenFalse);
 
             // Either branch may hold the widened value.
             widenVariable(variable, whenTrue);
@@ -1840,11 +1862,19 @@ public class AstMethodBodyBuilder {
                 continue;
             }
 
-            if (targets.get(i).isGenericParameter()) {
-                arguments.put(targets.get(i).getSimpleName(), source);
+            TypeReference target = targets.get(i);
+            TypeReference element = source;
+
+            while (target.isArray() && element.isArray()) {
+                target = target.getElementType();
+                element = element.getElementType();
+            }
+
+            if (target.isGenericParameter()) {
+                arguments.put(target.getSimpleName(), element);
             }
             else {
-                addNestedTypeArguments(arguments, targets.get(i), source);
+                addNestedTypeArguments(arguments, target, element);
             }
         }
     }
@@ -2236,10 +2266,14 @@ public class AstMethodBodyBuilder {
                 rank++;
             }
 
-            if (element.isGenericParameter() &&
-                ((GenericParameter) element).getOwner() instanceof TypeReference) {
+            final boolean typed = element.isGenericParameter()
+                                  ? ((GenericParameter) element).getOwner() instanceof TypeReference
+                                  : element instanceof IGenericInstance && mentionsAny(element, definition);
 
-                TypeReference erased = MetadataHelper.erase(MetadataHelper.getUpperBound(element));
+            if (typed) {
+                TypeReference erased = element.isGenericParameter()
+                                       ? MetadataHelper.erase(MetadataHelper.getUpperBound(element))
+                                       : MetadataHelper.erase(element);
 
                 while (rank-- > 0) {
                     erased = erased.makeArrayType();
@@ -2255,6 +2289,45 @@ public class AstMethodBodyBuilder {
 
     private static boolean isOverloadedOnClassVariables(final MethodReference method) {
         return takesClassTypeVariables(method) && overloads(method.resolve()).size() > 1;
+    }
+
+    /** Tells whether a type mentions a type variable of the class declaring a method. */
+    private static boolean mentionsAny(final TypeReference type, final MethodDefinition method) {
+        return any(method.getDeclaringType().getGenericParameters(),
+                   variable -> mentions(type, variable.getSimpleName()));
+    }
+
+    /** Tells whether the result of a method is a type with wildcard type arguments. */
+    private static boolean hasWildcardResult(final Expression receiver) {
+        final Expression invocation = receiver.getUserData(Keys.RESULT_CAST) != null
+                                      ? ((CastExpression) receiver).getExpression()
+                                      : receiver;
+        final TypeReference declared = declaredTypeOf(invocation);
+
+        return declared instanceof IGenericInstance &&
+               any(((IGenericInstance) declared).getTypeArguments(), TypeReference::isWildcardType);
+    }
+
+    /**
+     * Returns the receiver of a field write specialized with the type of the value, or else made raw.
+     */
+    private Expression writableReceiver(final Expression receiver, final FieldReference field, final Expression value) {
+        final ResolveResult resolved = new JavaResolver(_context).apply(value);
+        final TypeReference declared = declaredType(field);
+
+        if (resolved != null && resolved.getType() != null && declared != null && declared.isGenericParameter()) {
+            final Expression discarded = discardResultCast(receiver);
+            final Expression specialized = specializedReceiver(
+                discarded,
+                field.getDeclaringType(),
+                Collections.singletonMap(declared.getSimpleName(), resolved.getType()),
+                declared.getSimpleName()
+            );
+
+            return specialized != discarded ? specialized : rawReceiver(discarded, field.getDeclaringType());
+        }
+
+        return rawReceiver(receiver, field.getDeclaringType());
     }
 
     private Expression rawReceiver(final Expression receiver, final TypeReference declaringType) {

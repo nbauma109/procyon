@@ -179,6 +179,18 @@ public class GenericsTests extends DecompilerTest {
                 "        Dual<String, java.io.IOException> q = (Dual<String, java.io.IOException>) (Dual) dual((Dual<?, ?>) t);",
                 "        return q::put;",
                 "    }",
+                "    String nested(boolean flag, boolean other, String s) {",
+                "        Object p = flag ? (other ? take((CharSequence) s) : s) : two((java.io.Serializable) s);",
+                "        return p.toString() + p.hashCode();",
+                "    }",
+                "    static class Piled<X, Y> { X get(java.util.List<Y[]> list) { return null; } }",
+                "    static class Piles extends Piled<Integer, Integer> { }",
+                "    <T extends Piled<?, ?>> T piled(T t) { return t; }",
+                "    Piles piled(Piles t) { return t; }",
+                "    java.util.function.ToIntFunction<java.util.List<Integer[]>> stacked(Piles t) {",
+                "        Piled<Integer, Integer> h = (Piled<Integer, Integer>) (Piled) piled((Piled<?, ?>) t);",
+                "        return h::get;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -377,6 +389,19 @@ public class GenericsTests extends DecompilerTest {
             "    Put dually(final Duals duals) {\n" +
             "        return ((Dual<String, IOException>)(Dual)this.dual((Dual)duals))::put;\n" +
             "    }\n" +
+            "    String nested(final boolean b, final boolean b2, final String s) {\n" +
+            "        final Object s2 = b ? (b2 ? this.take((CharSequence)s) : s) : this.two((Serializable)s);\n" +
+            "        return s2.toString() + s2.hashCode();\n" +
+            "    }\n" +
+            "    <T extends Piled<?, ?>> T piled(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Piles piled(final Piles piles) {\n" +
+            "        return piles;\n" +
+            "    }\n" +
+            "    ToIntFunction<List<Integer[]>> stacked(final Piles piles) {\n" +
+            "        return ((Piled<Integer, Integer>)(Piled)this.piled((Piled)piles))::get;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -405,6 +430,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    static class Piles extends Piled<Integer, Integer> {\n" +
+            "    }\n" +
+            "    static class Piled<X, Y> {\n" +
+            "        X get(final List<Y[]> list) {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    interface Put {\n" +
             "        String run(final String p0) throws IOException;\n" +
@@ -1445,6 +1477,18 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void arrayMember(final String s, final String[] array) {\n" +
             "        ((Slot)this.slot((CharSequence)s)).fill((Object[])array);\n" +
+            "    }\n" +
+            "    <T extends CharSequence> Crate<? extends T> loose(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    Crate<String> loose(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    void captured(final String s) {\n" +
+            "        ((Crate<String>)(Crate)this.loose((CharSequence)s)).value = s;\n" +
+            "    }\n" +
+            "    void listMember(final String s, final ArrayList<String> list) {\n" +
+            "        ((Slot)this.slot((CharSequence)s)).take((List)list);\n" +
             "    }\n" +
             "    void element(final String s, final List<String> list) {\n" +
             "        ((List[])(List[])this.arrays((CharSequence)s))[0] = list;\n" +
@@ -2685,6 +2729,22 @@ class Writes {
         ((Slot<String>) (Slot) this.slot((CharSequence) s)).fill(array);
     }
 
+    <T extends CharSequence> Crate<? extends T> loose(final T t) {
+        return null;
+    }
+
+    Crate<String> loose(final String s) {
+        return null;
+    }
+
+    void captured(final String s) {
+        ((Crate<String>) (Crate) this.loose((CharSequence) s)).value = s;
+    }
+
+    void listMember(final String s, final ArrayList<String> list) {
+        ((Slot<String>) (Slot) this.slot((CharSequence) s)).take(list);
+    }
+
     void element(final String s, final List<String> list) {
         ((List<String>[]) (List[]) this.arrays((CharSequence) s))[0] = list;
     }
@@ -2746,6 +2806,12 @@ class Slot<X> {
     }
 
     void fill(final CharSequence[] x) {
+    }
+
+    void take(final List<X> x) {
+    }
+
+    void take(final ArrayList<Integer> x) {
     }
 }
 
