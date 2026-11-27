@@ -78,6 +78,15 @@ public class GenericsTests extends DecompilerTest {
                 "    static class Several extends Many<String> { }",
                 "    <T extends Many<?>> T many(T t) { return t; }",
                 "    Several many(Several s) { return s; }",
+                "    interface Fn<A, R extends Number> { R apply(A a); }",
+                "    static class Counted<X extends Number> { X get(String key) { return null; } }",
+                "    static class Count extends Counted<Integer> { }",
+                "    <T extends Counted<?>> T counted(T t) { return t; }",
+                "    Count counted(Count c) { return c; }",
+                "    Fn<String, Integer> numbers(Count c) {",
+                "        Counted<Integer> n = (Counted<Integer>) (Counted) counted((Counted<?>) c);",
+                "        return n::get;",
+                "    }",
                 "    java.util.function.Supplier<String[]> arrays(Several s) {",
                 "        Many<String> m = (Many<String>) (Many) many((Many<?>) s);",
                 "        return m::all;",
@@ -167,6 +176,15 @@ public class GenericsTests extends DecompilerTest {
             "    Several many(final Several several) {\n" +
             "        return several;\n" +
             "    }\n" +
+            "    <T extends Counted<?>> T counted(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Count counted(final Count count) {\n" +
+            "        return count;\n" +
+            "    }\n" +
+            "    Fn<String, Integer> numbers(final Count count) {\n" +
+            "        return (Fn)(Fn<String, Number>)this.counted((Counted)count)::get;\n" +
+            "    }\n" +
             "    Supplier<String[]> arrays(final Several several) {\n" +
             "        return (Supplier)this.many((Many)several)::all;\n" +
             "    }\n" +
@@ -189,6 +207,16 @@ public class GenericsTests extends DecompilerTest {
             "    int element(final String s) {\n" +
             "        final CharSequence s2 = this.array((CharSequence)s)[0];\n" +
             "        return s2.length() + s2.charAt(0);\n" +
+            "    }\n" +
+            "    static class Count extends Counted<Integer> {\n" +
+            "    }\n" +
+            "    static class Counted<X extends Number> {\n" +
+            "        X get(final String s) {\n" +
+            "            return null;\n" +
+            "        }\n" +
+            "    }\n" +
+            "    interface Fn<A, R extends Number> {\n" +
+            "        R apply(final A p0);\n" +
             "    }\n" +
             "    static class Several extends Many<String> {\n" +
             "    }\n" +
@@ -950,6 +978,13 @@ public class GenericsTests extends DecompilerTest {
             "    <E extends Number> void toss(final E e, final List<String> a, final List<Integer> b) {\n" +
             "    }\n" +
             "    <N> void toss(final Integer e, final Collection<N> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
+            "    }\n" +
+            "    <N> void add(final Integer e, final Collection<N> list, final N n) {\n" +
+            "    }\n" +
+            "    void scalar(final Integer e, final List<String> list) {\n" +
+            "        this.add(e, list, 1);\n" +
             "    }\n" +
             "    <T extends Serializable, U extends CharSequence> Coffer<T> pair(final T t, final U u) {\n" +
             "        return null;\n" +
@@ -1980,6 +2015,16 @@ class Shared {
     }
 
     <N> void toss(final Integer e, final Collection<N> a, final Collection<N> b) {
+    }
+
+    <E extends Number> void add(final E e, final List<String> list, final Integer n) {
+    }
+
+    <N> void add(final Integer e, final Collection<N> list, final N n) {
+    }
+
+    void scalar(final Integer e, final List<String> list) {
+        this.add(e, list, 1);
     }
 
     <T extends Serializable, U extends CharSequence> Coffer<T> pair(final T t, final U u) {

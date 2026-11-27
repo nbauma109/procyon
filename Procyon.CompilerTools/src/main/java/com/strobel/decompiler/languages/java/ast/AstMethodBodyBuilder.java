@@ -1634,7 +1634,8 @@ public class AstMethodBodyBuilder {
 
     /**
      * Casts a method reference to its raw functional interface, whose result accepts any type.  Where
-     * the method takes arguments, their types are first kept by naming only the result type as Object.
+     * the method takes arguments, their types are first kept by naming only the result type as the bound
+     * of its variable.
      */
     private Expression adaptReturnType(
         final MethodGroupExpression methodGroup,
@@ -1660,8 +1661,8 @@ public class AstMethodBodyBuilder {
     }
 
     /**
-     * Returns a functional interface with the type argument of its result replaced by Object, or
-     * {@code null} if its result is not declared as one of its type variables.
+     * Returns a functional interface with the type argument of its result replaced by the bound of its
+     * variable, or {@code null} if its result is not declared as a variable with such a bound.
      */
     private static TypeReference withObjectResult(final TypeReference type) {
         final TypeDefinition definition = type.resolve();
@@ -1681,8 +1682,18 @@ public class AstMethodBodyBuilder {
             }
 
             for (int i = 0; i < variables.size() && i < arguments.size(); i++) {
-                if (variables.get(i).getSimpleName().equals(returned.getSimpleName())) {
-                    arguments.set(i, BuiltinTypes.Object);
+                final GenericParameter variable = variables.get(i);
+
+                if (variable.getSimpleName().equals(returned.getSimpleName())) {
+                    final TypeReference bound = variable.hasExtendsBound() ? variable.getExtendsBound()
+                                                                           : BuiltinTypes.Object;
+
+                    // A bound which depends on type variables cannot be named here.
+                    if (bound.isGenericParameter() || bound.containsGenericParameters()) {
+                        return null;
+                    }
+
+                    arguments.set(i, bound);
                     return definition.makeGenericType(arguments);
                 }
             }
@@ -2401,7 +2412,18 @@ public class AstMethodBodyBuilder {
             }
         }
 
-        return true;
+        return all(
+            argumentTypes.entrySet(),
+            argument -> {
+                final TypeReference parameterType = candidate.getParameters().get(argument.getKey()).getParameterType();
+                final TypeReference bound = parameterType.isGenericParameter()
+                                            ? bindings.get(parameterType.getSimpleName())
+                                            : null;
+
+                // An argument of the type variable itself must also be of the type for which it stands.
+                return bound == null || accepts(bound, argument.getValue());
+            }
+        );
     }
 
     /**
