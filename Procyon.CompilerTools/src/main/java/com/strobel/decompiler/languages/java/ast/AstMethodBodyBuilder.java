@@ -1236,7 +1236,17 @@ public class AstMethodBodyBuilder {
     private Expression eraseParameterizedResult(final MethodReference method, final InvocationExpression invocation) {
         final TypeReference declared = method.resolve().getReturnType();
 
-        if (declared instanceof IGenericInstance && declared.containsGenericParameters()) {
+        TypeReference element = declared;
+
+        while (element.isArray()) {
+            element = element.getElementType();
+        }
+
+        // A type which cannot be named here can only be consumed as one of its supertypes.
+        if (element instanceof IGenericInstance &&
+            element.containsGenericParameters() &&
+            isAccessibleType(element)) {
+
             final CastExpression cast = new CastExpression(_astBuilder.convertType(MetadataHelper.erase(declared)), invocation);
             cast.putUserData(Keys.RESULT_CAST, true);
             return cast;
@@ -1588,25 +1598,72 @@ public class AstMethodBodyBuilder {
                 isAccessible(candidate) &&
                 MetadataHelper.isAssignableFrom(MetadataHelper.erase(other), argumentType)) {
 
-                return eraseBound(MetadataHelper.getUpperBound(declared));
+                return selectingBound((GenericParameter) declared);
             }
         }
 
         return null;
     }
 
+    /**
+     * Returns the type variable in scope which bounds a generic parameter, as erasing it would not
+     * satisfy the parameter, or the erasure of its bound.
+     */
+    private TypeReference selectingBound(final GenericParameter parameter) {
+        TypeReference bound = parameter;
+
+        while (isForeignTypeVariable(bound) && ((GenericParameter) bound).hasExtendsBound()) {
+            bound = ((GenericParameter) bound).getExtendsBound();
+        }
+
+        if (bound.isGenericParameter() && isClassTypeVariableInScope((GenericParameter) bound)) {
+            return bound;
+        }
+
+        return eraseBound(MetadataHelper.getUpperBound(parameter));
+    }
+
+    private boolean isClassTypeVariableInScope(final GenericParameter variable) {
+        final MethodDefinition currentMethod = _context.getCurrentMethod();
+        final GenericParameter inScope = currentMethod.findTypeVariable(variable.getSimpleName());
+
+        return !currentMethod.isStatic() &&
+               inScope != null &&
+               inScope.getOwner() instanceof TypeReference &&
+               variable.getOwner() instanceof TypeReference &&
+               ((TypeReference) inScope.getOwner()).isEquivalentTo((TypeReference) variable.getOwner());
+    }
+
     /** Tells whether the compiler may select a method from the type being decompiled. */
     private boolean isAccessible(final MethodReference method) {
         final MethodDefinition definition = method.resolve();
 
-        if (definition == null || definition.isPublic()) {
+        return definition == null || isAccessible(definition, definition.getDeclaringType());
+    }
+
+    /** Tells whether a type, along with the types enclosing it, can be named in the type being decompiled. */
+    private boolean isAccessibleType(final TypeReference type) {
+        for (TypeDefinition definition = type.resolve(); definition != null; ) {
+            final TypeReference declaringType = definition.getDeclaringType();
+
+            if (!isAccessible(definition, declaringType != null ? declaringType : definition)) {
+                return false;
+            }
+
+            definition = declaringType != null ? declaringType.resolve() : null;
+        }
+
+        return true;
+    }
+
+    private boolean isAccessible(final IMemberDefinition member, final TypeReference declaringType) {
+        if (member.isPublic()) {
             return true;
         }
 
-        final TypeReference declaringType = definition.getDeclaringType();
         final TypeReference currentType = _context.getCurrentType();
 
-        if (definition.isPrivate()) {
+        if (member.isPrivate()) {
             return outermostType(declaringType).isEquivalentTo(outermostType(currentType));
         }
 
@@ -1614,7 +1671,7 @@ public class AstMethodBodyBuilder {
             return true;
         }
 
-        if (definition.isProtected()) {
+        if (member.isProtected()) {
             for (TypeReference type = currentType; type != null; type = type.getDeclaringType()) {
                 if (MetadataHelper.isSubType(type, declaringType)) {
                     return true;

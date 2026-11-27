@@ -280,6 +280,47 @@ public class GenericsTests extends DecompilerTest {
     }
 
     @Test
+    public void testBoundWhichIsAClassTypeVariable() {
+        verifyOutput(
+            ClassBound.class,
+            defaultSettings(),
+            "class ClassBound<X> {\n" +
+            "    <T extends X> T first(final T value) {\n" +
+            "        return value;\n" +
+            "    }\n" +
+            "    String first(final String value) {\n" +
+            "        return (String)this.first((X)value);\n" +
+            "    }\n" +
+            "    <U extends X, V extends U> V second(final V value) {\n" +
+            "        return value;\n" +
+            "    }\n" +
+            "    String second(final String value) {\n" +
+            "        return (String)this.second((X)value);\n" +
+            "    }\n" +
+            "    <T extends CharSequence> List<T>[] array(final T value) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<String>[] array(final String value) {\n" +
+            "        return (List[])this.array((CharSequence)value);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testNoCastToAnInaccessibleResultType() {
+        verifyOutput(
+            HiddenResult.class,
+            defaultSettings(),
+            "class HiddenResult {\n" +
+            "    Object run(final String value) {\n" +
+            "        return OverloadsElsewhere.hidden((CharSequence)value);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
     public void testOverloadsOfAnotherPackage() {
         verifyOutput(
             Outsider.class,
@@ -518,6 +559,43 @@ class BoundOverloads {
 
     static class Holder<T> {
         T value;
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class ClassBound<X> {
+    <T extends X> T first(final T value) {
+        return value;
+    }
+
+    @SuppressWarnings("unchecked")
+    String first(final String value) {
+        return (String) first((X) value);
+    }
+
+    <U extends X, V extends U> V second(final V value) {
+        return value;
+    }
+
+    @SuppressWarnings("unchecked")
+    String second(final String value) {
+        return (String) second((X) value);
+    }
+
+    <T extends CharSequence> List<T>[] array(final T value) {
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    List<String>[] array(final String value) {
+        return (List[]) array((CharSequence) value);
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class HiddenResult {
+    Object run(final String value) {
+        return OverloadsElsewhere.hidden((CharSequence) value);
     }
 }
 

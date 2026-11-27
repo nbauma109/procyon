@@ -14,4 +14,15 @@ public class OverloadsElsewhere {
 
     protected static void read(final String s) {
     }
+
+    public static <C extends CharSequence> Hidden<C> hidden(final C c) {
+        return null;
+    }
+
+    public static Hidden<String> hidden(final String s) {
+        return null;
+    }
+}
+
+class Hidden<T> {
 }
