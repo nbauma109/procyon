@@ -81,7 +81,10 @@ public final class RedundantCastUtility {
             operand = ((ParenthesizedExpression) operand).getExpression();
         }
 
-        if (operand.isNull() || restoresResultType(operand)) {
+        if (operand.isNull() ||
+            castExpression.getUserData(Keys.RESULT_CAST) != null ||
+            restoresResultType(operand)) {
+
             return;
         }
 

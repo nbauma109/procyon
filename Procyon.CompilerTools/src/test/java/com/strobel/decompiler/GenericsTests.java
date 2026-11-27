@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.stream.Collectors;
 import java.util.Map;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.lang.reflect.Method;
 import org.junit.Test;
 
@@ -303,6 +304,9 @@ public class GenericsTests extends DecompilerTest {
             "    List<String>[] array(final String value) {\n" +
             "        return (List[])this.array((CharSequence)value);\n" +
             "    }\n" +
+            "    String other(final ClassBound<CharSequence> other, final String value) {\n" +
+            "        return (String)other.first((CharSequence)value);\n" +
+            "    }\n" +
             "}\n"
         );
     }
@@ -349,6 +353,27 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void hiddenBound(final OverloadsElsewhere.Child child) {\n" +
             "        OverloadsElsewhere.take((OverloadsElsewhere.Parent)child);\n" +
+            "    }\n" +
+            "    <T extends CharSequence> List<T> list(final T value) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<String> list(final String value) {\n" +
+            "        return (List)this.list((CharSequence)value);\n" +
+            "    }\n" +
+            "    int loop(final String value) {\n" +
+            "        int n = 0;\n" +
+            "        for (final CharSequence c : this.list((CharSequence)value)) {\n" +
+            "            n += c.length();\n" +
+            "        }\n" +
+            "        return n;\n" +
+            "    }\n" +
+            "    int iterate(final String value) {\n" +
+            "        final Iterator<CharSequence> i = (Iterator)this.list((CharSequence)value).iterator();\n" +
+            "        int n = 0;\n" +
+            "        while (i.hasNext()) {\n" +
+            "            n += i.next().length();\n" +
+            "        }\n" +
+            "        return n + (i.hasNext() ? 1 : 0);\n" +
             "    }\n" +
             "}\n"
         );
@@ -624,6 +649,11 @@ class ClassBound<X> {
     List<String>[] array(final String value) {
         return (List[]) array((CharSequence) value);
     }
+
+    @SuppressWarnings("unchecked")
+    String other(final ClassBound<CharSequence> other, final String value) {
+        return (String) other.first((CharSequence) value);
+    }
 }
 
 @SuppressWarnings("unused") // decompiler fixture
@@ -674,6 +704,32 @@ class TypedCalls {
 
     void hiddenBound(final OverloadsElsewhere.Child child) {
         OverloadsElsewhere.take((OverloadsElsewhere.Parent) child);
+    }
+
+    <T extends CharSequence> List<T> list(final T value) {
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    List<String> list(final String value) {
+        return (List) list((CharSequence) value);
+    }
+
+    int loop(final String value) {
+        int n = 0;
+        for (final CharSequence c : list((CharSequence) value)) {
+            n += c.length();
+        }
+        return n;
+    }
+
+    int iterate(final String value) {
+        final Iterator<CharSequence> i = list((CharSequence) value).iterator();
+        int n = 0;
+        while (i.hasNext()) {
+            n += i.next().length();
+        }
+        return n + (i.hasNext() ? 1 : 0);
     }
 }
 

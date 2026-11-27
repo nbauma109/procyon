@@ -886,7 +886,7 @@ public class AstMethodBodyBuilder {
                 final IdentifierExpression name = new IdentifierExpression( byteCode.getOffset(),
                         variableOperand.getName());
                 name.putUserData(Keys.VARIABLE, variableOperand);
-                return new AssignmentExpression(name, arg1);
+                return new AssignmentExpression(name, eraseStoredResult(arg1));
             }
 
             case LoadElement: {
@@ -1101,11 +1101,16 @@ public class AstMethodBodyBuilder {
                                 byteCode.getCode() == AstCode.InvokeSpecial;
 
         Expression target;
+        boolean widenedReceiver = false;
 
         final TypeReference declaringType = methodReference.getDeclaringType();
 
         if (hasThis) {
-            target = discardResultCast(arguments.remove(0));
+            final Expression receiver = arguments.remove(0);
+
+            widenedReceiver = receiver.getUserData(Keys.RESULT_CAST) != null ||
+                              receiver.getUserData(Keys.WIDENED_RECEIVER) != null;
+            target = discardResultCast(receiver);
 
             if (target instanceof NullReferenceExpression) {
                 target = new CastExpression(_astBuilder.convertType(declaringType), target);
@@ -1229,6 +1234,10 @@ public class AstMethodBodyBuilder {
 
         invocation.putUserData(Keys.MEMBER_REFERENCE, methodReference);
 
+        if (widenedReceiver) {
+            invocation.putUserData(Keys.WIDENED_RECEIVER, true);
+        }
+
         return invocation;
     }
 
@@ -1257,6 +1266,20 @@ public class AstMethodBodyBuilder {
         }
 
         return invocation;
+    }
+
+    /**
+     * The type of a local storing a result which depends on a widened receiver, such as its iterator,
+     * was inferred before the widening.
+     */
+    private Expression eraseStoredResult(final Expression value) {
+        if (value.getUserData(Keys.WIDENED_RECEIVER) == null) {
+            return value;
+        }
+
+        final MethodReference method = (MethodReference) value.getUserData(Keys.MEMBER_REFERENCE);
+
+        return method.resolve() != null ? eraseParameterizedResult(method, (InvocationExpression) value) : value;
     }
 
     /**
@@ -1651,14 +1674,15 @@ public class AstMethodBodyBuilder {
         if (bound.isGenericParameter()) {
             final GenericParameter variable = (GenericParameter) bound;
 
-            if (isClassTypeVariableInScope(variable)) {
-                return variable;
-            }
-
+            // The receiver may substitute another type for a variable which is also in scope here.
             final TypeReference argument = typeArgumentOf(variable, method.getDeclaringType(), receiverType);
 
             if (argument != null) {
                 return argument.isGenericParameter() ? argument : eraseBound(argument);
+            }
+
+            if (isClassTypeVariableInScope(variable)) {
+                return variable;
             }
         }
 

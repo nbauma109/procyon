@@ -43,6 +43,8 @@ public final class Keys {
     public final static Key<Boolean> SELECTS_OVERLOAD = Key.create("SelectsOverload");
     /** Marks a cast added to the result of an invocation. */
     public final static Key<Boolean> RESULT_CAST = Key.create("ResultCast");
+    /** Marks an invocation whose receiver has other type arguments than those it was inferred with. */
+    public final static Key<Boolean> WIDENED_RECEIVER = Key.create("WidenedReceiver");
     public final static Key<DynamicCallSite> DYNAMIC_CALL_SITE = Key.create("DynamicCallSite");
     public final static Key<AstBuilder> AST_BUILDER = Key.create("AstBuilder");
     public final static Key<Object> CONSTANT_VALUE = Key.create("ConstantValue");

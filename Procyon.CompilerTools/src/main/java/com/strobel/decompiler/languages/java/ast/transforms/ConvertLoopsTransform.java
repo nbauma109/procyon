@@ -934,7 +934,13 @@ public final class ConvertLoopsTransform extends ContextTrackingVisitor<AstNode>
         GET_ITERATOR_PATTERN = new ExpressionStatement(
             new AssignmentExpression(
                 new NamedNode("left", new AnyNode()).toExpression(),
-                new AnyNode("collection").toExpression().invoke("iterator")
+                new Choice(
+                    new AnyNode("collection").toExpression().invoke("iterator"),
+                    new CastExpression(
+                        new AnyNode().toType(),
+                        new AnyNode("collection").toExpression().invoke("iterator")
+                    )
+                ).toExpression()
             )
         );
 
@@ -1035,6 +1041,14 @@ public final class ConvertLoopsTransform extends ContextTrackingVisitor<AstNode>
         final Match m1 = GET_ITERATOR_PATTERN.match(node);
 
         if (!m1.success()) {
+            return null;
+        }
+
+        final Expression value = ((AssignmentExpression) node.getExpression()).getRight();
+        final boolean erasedResult = value.getUserData(Keys.RESULT_CAST) != null;
+
+        // Only the casts added to the result may be dropped along with the iterator.
+        if (value instanceof CastExpression && !erasedResult) {
             return null;
         }
 
@@ -1146,6 +1160,15 @@ public final class ConvertLoopsTransform extends ContextTrackingVisitor<AstNode>
 
         if (itemType == null || itemName == null) {
             return null;
+        }
+
+        if (erasedResult) {
+            final AstType staleType = firstOrDefault(iteratorDeclaration.getType().getChildrenByRole(Roles.TYPE_ARGUMENT));
+
+            // An item still typed as before the widening cannot iterate over the collection itself.
+            if (staleType != null && itemType.matches(staleType)) {
+                return null;
+            }
         }
 
         final ForEachStatement forEach = new ForEachStatement(node.getOffset());
