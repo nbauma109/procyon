@@ -1399,8 +1399,15 @@ public class AstMethodBodyBuilder {
             TypeReference type = arguments.get(i).getUserData(Keys.SELECTS_OVERLOAD);
 
             if (type != null &&
-                !(type instanceof ICompoundType) &&
                 variableChain(method.getParameters().get(i).getParameterType()).contains(declared.getSimpleName())) {
+
+                // Of an intersection, the first type is the one to which the compiler erases it.
+                if (type instanceof ICompoundType) {
+                    final ICompoundType intersection = (ICompoundType) type;
+
+                    type = intersection.getBaseType() != null ? intersection.getBaseType()
+                                                              : first(intersection.getInterfaces());
+                }
 
                 while (rank-- > 0) {
                     type = type.makeArrayType();
@@ -2329,10 +2336,12 @@ public class AstMethodBodyBuilder {
         final List<TypeReference> sources = argument.getTypeArguments();
 
         for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
-            // A type which depends on a type variable is left to the inference of the compiler.
-            if (!targets.get(i).isGenericParameter() &&
-                !targets.get(i).containsGenericParameters() &&
-                !contains(targets.get(i), sources.get(i))) {
+            final TypeReference target = targets.get(i);
+
+            // Of a type variable only the bounds are checked; other types which depend on one are left
+            // to the inference of the compiler.
+            if (target.isGenericParameter() ? !sources.get(i).isWildcardType() && !accepts(target, sources.get(i))
+                                            : !target.containsGenericParameters() && !contains(target, sources.get(i))) {
                 return false;
             }
         }

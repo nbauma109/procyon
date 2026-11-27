@@ -17,6 +17,7 @@
 package com.strobel.decompiler.languages.java.ast.transforms;
 
 import com.strobel.annotations.Nullable;
+import com.strobel.assembler.metadata.MetadataHelper;
 import com.strobel.assembler.metadata.BuiltinTypes;
 import com.strobel.assembler.metadata.Flags;
 import com.strobel.assembler.metadata.LanguageFeature;
@@ -1037,6 +1038,15 @@ public final class ConvertLoopsTransform extends ContextTrackingVisitor<AstNode>
         EMPTY_FOR_EACH_PATTERN = emptyPattern;
     }
 
+    private static boolean acceptsWidenedItems(final AstType itemType, final Expression iterator) {
+        final List<TypeReference> bounds = iterator.getUserData(Keys.WIDENED_BOUNDS);
+        final TypeReference type = itemType.toTypeReference();
+
+        return bounds != null &&
+               type != null &&
+               bounds.stream().anyMatch(bound -> MetadataHelper.isAssignableFrom(type, bound));
+    }
+
     public final ForEachStatement transformForEach(final ExpressionStatement node) {
         final Match m1 = GET_ITERATOR_PATTERN.match(node);
 
@@ -1162,13 +1172,9 @@ public final class ConvertLoopsTransform extends ContextTrackingVisitor<AstNode>
             return null;
         }
 
-        if (erasedResult) {
-            final AstType staleType = firstOrDefault(iteratorDeclaration.getType().getChildrenByRole(Roles.TYPE_ARGUMENT));
-
-            // An item still typed as before the widening cannot iterate over the collection itself.
-            if (staleType != null && itemType.matches(staleType)) {
-                return null;
-            }
+        // The collection itself only yields items of the widened type.
+        if (erasedResult && !acceptsWidenedItems(itemType, ((CastExpression) value).getExpression())) {
+            return null;
         }
 
         final ForEachStatement forEach = new ForEachStatement(node.getOffset());

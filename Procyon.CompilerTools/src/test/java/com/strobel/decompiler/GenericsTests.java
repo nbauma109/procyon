@@ -60,6 +60,12 @@ public class GenericsTests extends DecompilerTest {
                 "    static class Child extends Box<String> { }",
                 "    <T extends Box<?>> T pick(T t) { return t; }",
                 "    Child pick(Child c) { return c; }",
+                "    <T extends CharSequence & java.io.Serializable> T both(T t) { return t; }",
+                "    String both(String s) { return s; }",
+                "    int intersected(String s) {",
+                "        CharSequence c = both((CharSequence & java.io.Serializable) s);",
+                "        return c.length() + c.charAt(0);",
+                "    }",
                 "    String looped(Child c, int n) {",
                 "        Box<?> b = c;",
                 "        String s = \"\";",
@@ -115,6 +121,16 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    Child pick(final Child child) {\n" +
             "        return child;\n" +
+            "    }\n" +
+            "    <T extends CharSequence & Serializable> T both(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    String both(final String s) {\n" +
+            "        return s;\n" +
+            "    }\n" +
+            "    int intersected(final String s) {\n" +
+            "        final CharSequence both = this.both((CharSequence & Serializable)s);\n" +
+            "        return both.length() + both.charAt(0);\n" +
             "    }\n" +
             "    String looped(final Child child, int n) {\n" +
             "        Box pick = child;\n" +
@@ -835,6 +851,36 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    int uninferred(final String s) {\n" +
             "        return ((CharSequence)this.wrap((CharSequence & Serializable)s).get(0)).length();\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testNestedBoundsAndIncompatibleLoopItems() {
+        verifyOutput(
+            Nested2.class,
+            defaultSettings(),
+            "class Nested2 {\n" +
+            "    <E extends Number> void toss(final E e, final List<String> list) {\n" +
+            "    }\n" +
+            "    <N extends Number> void toss(final Integer e, final Collection<N> list) {\n" +
+            "    }\n" +
+            "    <T extends CharSequence> List<T> take(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<String> take(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    void nested(final Integer n, final List<String> list) {\n" +
+            "        this.toss(n, list);\n" +
+            "    }\n" +
+            "    void items(final String s) {\n" +
+            "        final Iterator<String> iterator = (Iterator)this.take((CharSequence)s).iterator();\n" +
+            "        while (iterator.hasNext()) {\n" +
+            "            final Serializable item = (Serializable)iterator.next();\n" +
+            "            System.out.println(item.hashCode());\n" +
+            "        }\n" +
             "    }\n" +
             "}\n"
         );
@@ -1765,6 +1811,33 @@ class Partial {
 
     int uninferred(final String s) {
         return ((CharSequence) this.wrap((CharSequence & Serializable) s).get(0)).length();
+    }
+}
+
+@SuppressWarnings({ "unused", "unchecked" }) // decompiler fixture
+class Nested2 {
+    <E extends Number> void toss(final E e, final List<String> list) {
+    }
+
+    <N extends Number> void toss(final Integer e, final Collection<N> list) {
+    }
+
+    <T extends CharSequence> List<T> take(final T t) {
+        return null;
+    }
+
+    List<String> take(final String s) {
+        return null;
+    }
+
+    void nested(final Integer n, final List<String> list) {
+        this.toss(n, list);
+    }
+
+    void items(final String s) {
+        for (final Serializable item : (List<String>) (List) this.take((CharSequence) s)) {
+            System.out.println(item.hashCode());
+        }
     }
 }
 
