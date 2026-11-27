@@ -832,6 +832,25 @@ public class AstMethodBodyBuilder {
                         methodGroup.putUserData(Keys.TYPE_REFERENCE, byteCode.getInferredType());
                     }
 
+                    // A raw receiver could select another overload of a member typed by its variables.
+                    if (hasInstanceArgument &&
+                        isWidened(arg1) &&
+                        isOverloadedOnClassVariables(targetMethod) &&
+                        callSite.getBootstrapArguments().get(2) instanceof IMethodSignature) {
+
+                        final Map<String, TypeReference> typeArguments = receiverTypeArguments(
+                            targetMethod,
+                            (IMethodSignature) callSite.getBootstrapArguments().get(2),
+                            byteCode.getInferredType()
+                        );
+
+                        for (final String variable : typeArguments.keySet()) {
+                            if (specializeReceiver(methodGroup, declaringType, typeArguments, variable)) {
+                                return methodGroup;
+                            }
+                        }
+                    }
+
                     // A widened receiver would throw the bound of its type variable.
                     if (hasInstanceArgument && isWidened(arg1)) {
                         final TypeReference thrown = thrownByDescriptor(targetMethod, byteCode.getInferredType());
@@ -2200,6 +2219,10 @@ public class AstMethodBodyBuilder {
         }
     }
 
+    private static boolean isOverloadedOnClassVariables(final MethodReference method) {
+        return takesClassTypeVariables(method) && overloads(method.resolve()).size() > 1;
+    }
+
     private Expression rawReceiver(final Expression receiver, final TypeReference declaringType) {
         if (receiver.getUserData(Keys.RESULT_CAST) != null) {
             receiver.putUserData(Keys.WIDENED_BOUNDS, Collections.<TypeReference>emptyList());
@@ -3136,15 +3159,20 @@ public class AstMethodBodyBuilder {
         for (final Map.Entry<TypeReference, TypeReference> substitution : substitutions.entrySet()) {
             final GenericParameter variable = (GenericParameter) substitution.getKey();
 
-            if (!variable.hasExtendsBound() || !(variable.getExtendsBound() instanceof IGenericInstance)) {
+            if (!variable.hasExtendsBound()) {
                 continue;
             }
 
-            final TypeReference bound = TypeSubstitutionVisitor.instance().visit(variable.getExtendsBound(),
-                                                                                 substitutions);
+            for (final TypeReference component : typesOf(variable.getExtendsBound())) {
+                if (!(component instanceof IGenericInstance)) {
+                    continue;
+                }
 
-            if (!bound.containsGenericParameters() && !accepts(bound, substitution.getValue())) {
-                return false;
+                final TypeReference bound = TypeSubstitutionVisitor.instance().visit(component, substitutions);
+
+                if (!bound.containsGenericParameters() && !accepts(bound, substitution.getValue())) {
+                    return false;
+                }
             }
         }
 

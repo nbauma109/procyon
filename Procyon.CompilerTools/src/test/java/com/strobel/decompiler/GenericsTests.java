@@ -156,6 +156,14 @@ public class GenericsTests extends DecompilerTest {
                 "        Taking<Integer, Integer> l = (Taking<Integer, Integer>) (Taking) taking((Taking<?, ?>) t);",
                 "        return l::get;",
                 "    }",
+                "    static class Twin<X> { String put(X x) { return null; } String put(CharSequence x) { return null; } }",
+                "    static class Twins extends Twin<String> { }",
+                "    <T extends Twin<?>> T twin(T t) { return t; }",
+                "    Twins twin(Twins t) { return t; }",
+                "    java.util.function.Function<String, String> putting(Twins t) {",
+                "        Twin<String> w2 = (Twin<String>) (Twin) twin((Twin<?>) t);",
+                "        return w2::put;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -333,6 +341,15 @@ public class GenericsTests extends DecompilerTest {
             "    ToIntFunction<List<Integer>> listed(final Takes takes) {\n" +
             "        return ((Taking<Integer, Integer>)(Taking)this.taking((Taking)takes))::get;\n" +
             "    }\n" +
+            "    <T extends Twin<?>> T twin(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Twins twin(final Twins twins) {\n" +
+            "        return twins;\n" +
+            "    }\n" +
+            "    Function<String, String> putting(final Twins twins) {\n" +
+            "        return ((Twin<String>)(Twin)this.twin((Twin)twins))::put;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -361,6 +378,16 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    static class Twins extends Twin<String> {\n" +
+            "    }\n" +
+            "    static class Twin<X> {\n" +
+            "        String put(final X x) {\n" +
+            "            return null;\n" +
+            "        }\n" +
+            "        String put(final CharSequence charSequence) {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    static class Takes extends Taking<Integer, Integer> {\n" +
             "    }\n" +
@@ -1245,6 +1272,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void between(final Integer e, final List<String> a, final List<Integer> b) {\n" +
             "        this.ranged(e, a, b);\n" +
+            "    }\n" +
+            "    <E extends Number> void twice(final E e, final List<Odder> list) {\n" +
+            "    }\n" +
+            "    <N extends Number & Comparable<N>> void twice(final Integer e, final Collection<N> list) {\n" +
+            "    }\n" +
+            "    void doubled(final Integer e, final List<Odder> list) {\n" +
+            "        this.twice(e, list);\n" +
             "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
@@ -2433,6 +2467,16 @@ class Shared {
         this.ranged(e, a, b);
     }
 
+    <E extends Number> void twice(final E e, final List<Odder> list) {
+    }
+
+    <N extends Number & Comparable<N>> void twice(final Integer e, final Collection<N> list) {
+    }
+
+    void doubled(final Integer e, final List<Odder> list) {
+        this.twice(e, list);
+    }
+
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {
     }
 
@@ -2618,6 +2662,10 @@ abstract class Duo<X, E extends Exception> {
 
 @SuppressWarnings("unused") // decompiler fixture
 abstract class Pair2 extends Duo<String, IOException> {
+}
+
+@SuppressWarnings({ "unused", "serial" }) // decompiler fixture
+abstract class Odder extends Number implements Comparable<String> {
 }
 
 @SuppressWarnings("unused") // decompiler fixture
