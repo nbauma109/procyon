@@ -49,6 +49,7 @@ public class AstMethodBodyBuilder {
     private final MetadataParser _parser;
     private final DecompilerContext _context;
     private final Set<Variable> _localVariablesToDefine = new LinkedHashSet<>();
+    private final Set<Variable> _widenedVariables = new HashSet<>();
 
     private final static INode LAMBDA_BODY_PATTERN;
     private final static INode EMPTY_LAMBDA_BODY_PATTERN;
@@ -817,7 +818,10 @@ public class AstMethodBodyBuilder {
 
             case ArrayLength:
                 final MemberReferenceExpression length = discardResultCast(arg1).member("length");
-                final TypeReference arrayType = single(byteCode.getArguments()).getInferredType();
+                final Variable array = arg1.getUserData(Keys.VARIABLE);
+                final TypeReference arrayType = _widenedVariables.contains(array)
+                                                ? array.getType()
+                                                : single(byteCode.getArguments()).getInferredType();
 
                 if (arrayType != null) {
                     length.putUserData(
@@ -892,6 +896,7 @@ public class AstMethodBodyBuilder {
                 final IdentifierExpression name = new IdentifierExpression( byteCode.getOffset(),
                         variableOperand.getName());
                 name.putUserData(Keys.VARIABLE, variableOperand);
+                widenVariable(variableOperand, arg1);
                 return new AssignmentExpression(name, eraseStoredResult(arg1));
             }
 
@@ -901,6 +906,12 @@ public class AstMethodBodyBuilder {
 
                 if (widened) {
                     element.putUserData(Keys.WIDENED_RECEIVER, true);
+                }
+
+                final TypeReference widenedArray = element.getTarget().getUserData(Keys.WIDENED_TYPE);
+
+                if (widenedArray != null && widenedArray.isArray()) {
+                    element.putUserData(Keys.WIDENED_TYPE, widenedArray.getElementType());
                 }
 
                 return element;
@@ -1241,6 +1252,13 @@ public class AstMethodBodyBuilder {
 
             if (widened) {
                 invocation.putUserData(Keys.MEMBER_REFERENCE, methodReference);
+
+                final TypeReference resultType = widenedResultType(methodReference.resolve(), adjustedArguments);
+
+                if (resultType != null) {
+                    invocation.putUserData(Keys.WIDENED_TYPE, resultType);
+                }
+
                 return eraseParameterizedResult(methodReference.resolve().getReturnType(), invocation);
             }
         }
@@ -1277,6 +1295,123 @@ public class AstMethodBodyBuilder {
         }
 
         return result;
+    }
+
+    /**
+     * Returns the type of a result declared as a type variable of a widened parameter, or as an array of
+     * it, or {@code null}.
+     */
+    private static TypeReference widenedResultType(final MethodDefinition method, final List<Expression> arguments) {
+        TypeReference declared = method.getReturnType();
+        int rank = 0;
+
+        while (declared.isArray()) {
+            declared = declared.getElementType();
+            rank++;
+        }
+
+        if (!declared.isGenericParameter()) {
+            return null;
+        }
+
+        for (int i = 0; i < arguments.size(); i++) {
+            TypeReference type = arguments.get(i).getUserData(Keys.SELECTS_OVERLOAD);
+
+            if (type != null &&
+                !(type instanceof ICompoundType) &&
+                variableChain(method.getParameters().get(i).getParameterType()).contains(declared.getSimpleName())) {
+
+                while (rank-- > 0) {
+                    type = type.makeArrayType();
+                }
+
+                return type;
+            }
+        }
+
+        return null;
+    }
+
+    /** Returns the names of a type variable and of the type variables which bound it. */
+    private static List<String> variableChain(final TypeReference variable) {
+        final List<String> names = new ArrayList<>();
+
+        TypeReference type = variable;
+
+        while (type.isGenericParameter()) {
+            names.add(type.getSimpleName());
+
+            if (!((GenericParameter) type).hasExtendsBound()) {
+                break;
+            }
+
+            type = ((GenericParameter) type).getExtendsBound();
+        }
+
+        return names;
+    }
+
+    /**
+     * Without debug information, the type of a local was inferred from the argument before its widening.
+     */
+    private void widenVariable(final Variable variable, final Expression value) {
+        final TypeReference type = value.getUserData(Keys.WIDENED_TYPE);
+        final VariableDefinition original = variable.getOriginalVariable();
+
+        if (type != null &&
+            !variable.isParameter() &&
+            (original == null || !original.isFromMetadata()) &&
+            variable.getType() != null &&
+            MetadataHelper.isAssignableFrom(type, variable.getType())) {
+
+            variable.setType(type);
+            _widenedVariables.add(variable);
+        }
+    }
+
+    /**
+     * An argument whose type depends on a widened type variable, such as a {@code List<T>} beside a
+     * {@code T}, is only still accepted as a raw type.
+     */
+    private void reconcileDependentArguments(
+        final MethodReference method,
+        final List<ParameterDefinition> parameters,
+        final List<Expression> originals,
+        final List<Expression> arguments) {
+
+        final Set<String> widened = new HashSet<>();
+        final MethodDefinition definition = method.resolve();
+
+        for (int i = 0; i < arguments.size(); i++) {
+            if (arguments.get(i).getUserData(Keys.SELECTS_OVERLOAD) != null) {
+                widened.addAll(variableChain(definition.getParameters().get(parameters.get(i).getPosition()).getParameterType()));
+            }
+        }
+
+        if (widened.isEmpty()) {
+            return;
+        }
+
+        for (int i = 0; i < arguments.size(); i++) {
+            final TypeReference declared = definition.getParameters().get(parameters.get(i).getPosition()).getParameterType();
+            final Expression original = originals.get(i);
+
+            if (declared instanceof IGenericInstance &&
+                !(original instanceof NullReferenceExpression) &&
+                !(original instanceof LambdaExpression) &&
+                !(original instanceof MethodGroupExpression) &&
+                any(widened, name -> mentions(declared, name))) {
+
+                final TypeReference rawType = MetadataHelper.erase(declared);
+
+                original.remove();
+
+                final CastExpression cast = new CastExpression(_astBuilder.convertType(rawType), original);
+
+                cast.putUserData(Keys.SELECTS_OVERLOAD, rawType);
+                arguments.set(i, cast);
+            }
+        }
     }
 
     /** Tells whether the type of an expression depends on a widened argument. */
@@ -1387,7 +1522,7 @@ public class AstMethodBodyBuilder {
         for (int i = 0; i < arguments.size(); i++) {
             final TypeReference bound = arguments.get(i).getUserData(Keys.SELECTS_OVERLOAD);
 
-            if (bound == null) {
+            if (bound == null || !definition.getParameters().get(i).getParameterType().isGenericParameter()) {
                 continue;
             }
 
@@ -1529,6 +1664,7 @@ public class AstMethodBodyBuilder {
 
         final JavaResolver resolver = new JavaResolver(_context);
         final ConvertTypeOptions options = new ConvertTypeOptions();
+        final List<Expression> originals = new ArrayList<>(arguments);
 
         options.setAllowWildcards(false);
 
@@ -1573,6 +1709,8 @@ public class AstMethodBodyBuilder {
                 );
             }
         }
+
+        reconcileDependentArguments(method, parameters, originals, arguments);
 
         int first = 0, last = parameterCount - 1;
 
@@ -1874,7 +2012,12 @@ public class AstMethodBodyBuilder {
         final List<GenericParameter> variables = declaringType.getGenericParameters();
 
         for (int i = 0; i < variables.size() && i < arguments.size(); i++) {
-            final TypeReference argument = arguments.get(i);
+            TypeReference argument = arguments.get(i);
+
+            // Only the lower bound of a wildcard is known to be accepted by its capture.
+            if (argument.isWildcardType() && argument.hasSuperBound()) {
+                argument = argument.getSuperBound();
+            }
 
             if (variables.get(i).getSimpleName().equals(variable.getSimpleName()) &&
                 !argument.isWildcardType() &&

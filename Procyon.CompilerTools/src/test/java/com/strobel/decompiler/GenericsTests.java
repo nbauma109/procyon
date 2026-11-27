@@ -14,6 +14,14 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.lang.reflect.Method;
 import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+import org.junit.Rule;
+import org.junit.rules.TemporaryFolder;
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 
 import java.util.Arrays;
 import java.util.Comparator;
@@ -22,6 +30,74 @@ import java.util.ListIterator;
 
 @SuppressWarnings("unchecked")
 public class GenericsTests extends DecompilerTest {
+    @Rule
+    public final TemporaryFolder folder = new TemporaryFolder();
+
+    @Test
+    public void testLocalsOfWidenedResultsWithoutDebugInformation() throws IOException {
+        final File source = folder.newFile("Widened.java");
+
+        Files.write(
+            source.toPath(),
+            Arrays.asList(
+                "public class Widened {",
+                "    <T extends CharSequence> T take(T t) { return t; }",
+                "    String take(String s) { return s; }",
+                "    <T extends CharSequence> T[] array(T t) { return null; }",
+                "    String[] array(String s) { return null; }",
+                "    int single(String s) {",
+                "        CharSequence c = take((CharSequence) s);",
+                "        return c.length() + c.charAt(0);",
+                "    }",
+                "    int many(String s) {",
+                "        CharSequence[] c = array((CharSequence) s);",
+                "        return c.length + c[0].length();",
+                "    }",
+                "    int element(String s) {",
+                "        CharSequence c = array((CharSequence) s)[0];",
+                "        return c.length() + c.charAt(0);",
+                "    }",
+                "}"
+            ),
+            StandardCharsets.UTF_8
+        );
+
+        final JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+
+        assertEquals(0, compiler.run(null, null, null, "-g:none", "-d", folder.getRoot().getPath(), source.getPath()));
+
+        verifyOutput(
+            new File(folder.getRoot(), "Widened.class").getPath(),
+            defaultSettings(),
+            "public class Widened {\n" +
+            "    <T extends CharSequence> T take(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    String take(final String s) {\n" +
+            "        return s;\n" +
+            "    }\n" +
+            "    <T extends CharSequence> T[] array(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    String[] array(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    int single(final String s) {\n" +
+            "        final CharSequence take = this.take((CharSequence)s);\n" +
+            "        return take.length() + take.charAt(0);\n" +
+            "    }\n" +
+            "    int many(final String s) {\n" +
+            "        final CharSequence[] array = this.array((CharSequence)s);\n" +
+            "        return array.length + array[0].length();\n" +
+            "    }\n" +
+            "    int element(final String s) {\n" +
+            "        final CharSequence s2 = this.array((CharSequence)s)[0];\n" +
+            "        return s2.length() + s2.charAt(0);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
     private static class A {
         public static <T> void sort1(final List<T> list, final Comparator<? super T> comparator) {
             final Object[] a = list.toArray();
@@ -379,6 +455,26 @@ public class GenericsTests extends DecompilerTest {
             "    int fieldElement(final String s) {\n" +
             "        final List<CharSequence> list = (List)this.crate((CharSequence)s).shelves[0];\n" +
             "        return list.size();\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testDependentArgumentsAndLowerBoundedReceivers() {
+        verifyOutput(
+            Partners.class,
+            defaultSettings(),
+            "class Partners {\n" +
+            "    <T extends CharSequence> void pair(final T t, final List<T> list) {\n" +
+            "    }\n" +
+            "    void pair(final String s, final List<String> list) {\n" +
+            "    }\n" +
+            "    void dependent(final String s, final List<String> list) {\n" +
+            "        this.pair((CharSequence)s, (List)list);\n" +
+            "    }\n" +
+            "    String lower(final Shelf<? super CharSequence> shelf, final String s) {\n" +
+            "        return (String)shelf.take((CharSequence)s);\n" +
             "    }\n" +
             "}\n"
         );
@@ -952,6 +1048,23 @@ class Pairs {
 class Crate<T> {
     List<T> values;
     List<T>[] shelves;
+}
+
+@SuppressWarnings({ "unused", "unchecked" }) // decompiler fixture
+class Partners {
+    <T extends CharSequence> void pair(final T t, final List<T> list) {
+    }
+
+    void pair(final String s, final List<String> list) {
+    }
+
+    void dependent(final String s, final List<String> list) {
+        this.pair((CharSequence) s, (List) list);
+    }
+
+    String lower(final Shelf<? super CharSequence> shelf, final String s) {
+        return (String) shelf.take((CharSequence) s);
+    }
 }
 
 @SuppressWarnings("unused") // decompiler fixture
