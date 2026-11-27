@@ -83,7 +83,8 @@ public final class RedundantCastUtility {
 
         if (operand.isNull() ||
             castExpression.getUserData(Keys.RESULT_CAST) != null ||
-            restoresResultType(operand)) {
+            restoresResultType(operand) ||
+            narrowsWidenedResult(castExpression, operand)) {
 
             return;
         }
@@ -113,6 +114,39 @@ public final class RedundantCastUtility {
         }
 
         return false;
+    }
+
+    /**
+     * Tells whether a cast narrows a value whose type is a type variable of a widened receiver: the
+     * compiler then only knows the bound used for the widening.
+     */
+    private static boolean narrowsWidenedResult(final CastExpression cast, final Expression operand) {
+        final List<TypeReference> bounds = operand.getUserData(Keys.WIDENED_BOUNDS);
+
+        if (bounds == null || operand.getUserData(Keys.WIDENED_RECEIVER) == null) {
+            return false;
+        }
+
+        final MemberReference member = operand.getUserData(Keys.MEMBER_REFERENCE);
+        TypeReference declared = null;
+
+        if (member instanceof MethodReference) {
+            final MethodDefinition method = ((MethodReference) member).resolve();
+            declared = method != null ? method.getReturnType() : null;
+        }
+        else if (member instanceof FieldReference) {
+            final FieldDefinition field = ((FieldReference) member).resolve();
+            declared = field != null ? field.getFieldType() : null;
+        }
+
+        if (declared == null || !declared.isGenericParameter()) {
+            return false;
+        }
+
+        final TypeReference castType = cast.getType().toTypeReference();
+
+        return castType != null &&
+               bounds.stream().noneMatch(bound -> MetadataHelper.isAssignableFrom(castType, bound));
     }
 
     @Nullable

@@ -40,6 +40,7 @@ public final class Keys {
     public final static Key<TypeReference> TYPE_REFERENCE = Key.create("TypeReference");
     public final static Key<TypeReference> ANONYMOUS_BASE_TYPE_REFERENCE = Key.create("AnonymousBaseTypeReference");
     /** Marks a cast without which an invocation would select another method. */
+    public final static Key<java.util.List<TypeReference>> WIDENED_BOUNDS = Key.create("WidenedBounds");
     public final static Key<TypeReference> WIDENED_TYPE = Key.create("WidenedType");
     public final static Key<TypeReference> SELECTS_OVERLOAD = Key.create("SelectsOverload");
     /** Marks a cast added to the result of an invocation. */

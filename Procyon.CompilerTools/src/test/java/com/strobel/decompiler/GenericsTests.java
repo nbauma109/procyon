@@ -436,7 +436,7 @@ public class GenericsTests extends DecompilerTest {
             "        return null;\n" +
             "    }\n" +
             "    int independent(final String s) {\n" +
-            "        return this.<CharSequence, String>both((CharSequence)s).get(0).length();\n" +
+            "        return ((String)this.<CharSequence, String>both((CharSequence)s).get(0)).length();\n" +
             "    }\n" +
             "    int element(final String s) {\n" +
             "        final List<CharSequence> list = (List)this.arrays((CharSequence)s)[0];\n" +
@@ -475,6 +475,38 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    String lower(final Shelf<? super CharSequence> shelf, final String s) {\n" +
             "        return (String)shelf.take((CharSequence)s);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testNarrowingCastsOnMembersOfWidenedResults() {
+        verifyOutput(
+            Narrowed.class,
+            defaultSettings(),
+            "class Narrowed {\n" +
+            "    <T extends CharSequence> Crate<T> crate(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    Crate<String> crate(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    String element(final String s) {\n" +
+            "        return ((String)this.crate((CharSequence)s).values.get(0)).substring(1);\n" +
+            "    }\n" +
+            "    String field(final String s) {\n" +
+            "        return ((String)this.crate((CharSequence)s).value).substring(1);\n" +
+            "    }\n" +
+            "    int wide(final String s) {\n" +
+            "        return this.crate((CharSequence)s).values.get(0).length();\n" +
+            "    }\n" +
+            "    <T extends CharSequence> void pair(final T t, final List<T>[] lists) {\n" +
+            "    }\n" +
+            "    void pair(final String s, final List<String>[] lists) {\n" +
+            "    }\n" +
+            "    void arrays(final String s, final List<String>[] lists) {\n" +
+            "        this.pair((CharSequence)s, (List[])lists);\n" +
             "    }\n" +
             "}\n"
         );
@@ -1046,6 +1078,7 @@ class Pairs {
 
 @SuppressWarnings("unused") // decompiler fixture
 class Crate<T> {
+    T value;
     List<T> values;
     List<T>[] shelves;
 }
@@ -1064,6 +1097,39 @@ class Partners {
 
     String lower(final Shelf<? super CharSequence> shelf, final String s) {
         return (String) shelf.take((CharSequence) s);
+    }
+}
+
+@SuppressWarnings({ "unused", "unchecked" }) // decompiler fixture
+class Narrowed {
+    <T extends CharSequence> Crate<T> crate(final T t) {
+        return null;
+    }
+
+    Crate<String> crate(final String s) {
+        return null;
+    }
+
+    String element(final String s) {
+        return ((String) this.crate((CharSequence) s).values.get(0)).substring(1);
+    }
+
+    String field(final String s) {
+        return ((String) this.crate((CharSequence) s).value).substring(1);
+    }
+
+    int wide(final String s) {
+        return ((CharSequence) this.crate((CharSequence) s).values.get(0)).length();
+    }
+
+    <T extends CharSequence> void pair(final T t, final List<T>[] lists) {
+    }
+
+    void pair(final String s, final List<String>[] lists) {
+    }
+
+    void arrays(final String s, final List<String>[] lists) {
+        this.pair((CharSequence) s, (List[]) lists);
     }
 }
 

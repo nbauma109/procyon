@@ -40,6 +40,7 @@ import com.strobel.functions.Function;
 import com.strobel.util.ContractUtils;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static com.strobel.core.CollectionUtilities.*;
 
@@ -694,7 +695,7 @@ public class AstMethodBodyBuilder {
                 fieldReference.putUserData(Keys.MEMBER_REFERENCE, fieldOperand);
 
                 if (widened) {
-                    fieldReference.putUserData(Keys.WIDENED_RECEIVER, true);
+                    markWidened(fieldReference, fieldReference.getTarget());
                 }
 
                 return fieldReference;
@@ -905,7 +906,7 @@ public class AstMethodBodyBuilder {
                 final IndexerExpression element = new IndexerExpression( byteCode.getOffset(), discardResultCast(arg1), arg2);
 
                 if (widened) {
-                    element.putUserData(Keys.WIDENED_RECEIVER, true);
+                    markWidened(element, element.getTarget());
                 }
 
                 final TypeReference widenedArray = element.getTarget().getUserData(Keys.WIDENED_TYPE);
@@ -1252,6 +1253,13 @@ public class AstMethodBodyBuilder {
 
             if (widened) {
                 invocation.putUserData(Keys.MEMBER_REFERENCE, methodReference);
+                invocation.putUserData(
+                    Keys.WIDENED_BOUNDS,
+                    adjustedArguments.stream()
+                                     .map(a -> a.getUserData(Keys.SELECTS_OVERLOAD))
+                                     .filter(Objects::nonNull)
+                                     .collect(Collectors.toList())
+                );
 
                 final TypeReference resultType = widenedResultType(methodReference.resolve(), adjustedArguments);
 
@@ -1266,7 +1274,7 @@ public class AstMethodBodyBuilder {
         invocation.putUserData(Keys.MEMBER_REFERENCE, methodReference);
 
         if (widenedReceiver) {
-            invocation.putUserData(Keys.WIDENED_RECEIVER, true);
+            markWidened(invocation, target);
         }
 
         return invocation;
@@ -1396,7 +1404,13 @@ public class AstMethodBodyBuilder {
             final TypeReference declared = definition.getParameters().get(parameters.get(i).getPosition()).getParameterType();
             final Expression original = originals.get(i);
 
-            if (declared instanceof IGenericInstance &&
+            TypeReference element = declared;
+
+            while (element.isArray()) {
+                element = element.getElementType();
+            }
+
+            if (element instanceof IGenericInstance &&
                 !(original instanceof NullReferenceExpression) &&
                 !(original instanceof LambdaExpression) &&
                 !(original instanceof MethodGroupExpression) &&
@@ -1412,6 +1426,12 @@ public class AstMethodBodyBuilder {
                 arguments.set(i, cast);
             }
         }
+    }
+
+    /** Marks an expression accessing a value whose type depends on a widened argument. */
+    private static void markWidened(final Expression expression, final Expression source) {
+        expression.putUserData(Keys.WIDENED_RECEIVER, true);
+        expression.putUserData(Keys.WIDENED_BOUNDS, source.getUserData(Keys.WIDENED_BOUNDS));
     }
 
     /** Tells whether the type of an expression depends on a widened argument. */
