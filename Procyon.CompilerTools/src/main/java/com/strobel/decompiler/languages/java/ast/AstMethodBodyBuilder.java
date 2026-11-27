@@ -17,6 +17,7 @@
 package com.strobel.decompiler.languages.java.ast;
 
 import com.strobel.annotations.NotNull;
+import com.strobel.assembler.ir.ExceptionHandler;
 import com.strobel.assembler.metadata.*;
 import com.strobel.assembler.metadata.annotations.CustomAnnotation;
 import com.strobel.core.ExceptionUtilities;
@@ -841,26 +842,29 @@ public class AstMethodBodyBuilder {
                     if (hasInstanceArgument &&
                         isWidened(arg1) &&
                         returned != null &&
-                        returned.isGenericParameter() &&
-                        byteCode.getInferredType() instanceof IGenericInstance) {
+                        returned.isGenericParameter()) {
 
                         final TypeReference functionType = byteCode.getInferredType();
+                        final boolean generic = functionType instanceof IGenericInstance;
                         final Object implemented = callSite.getBootstrapArguments().get(2);
 
-                        // An inherited descriptor cannot be adapted, so the receiver is specialized.
-                        if (!targetMethod.getParameters().isEmpty() &&
-                            withObjectResult(functionType) == null &&
+                        // Neither an inherited nor a fixed descriptor can be adapted, so the receiver is
+                        // specialized.
+                        if ((!generic ||
+                             !targetMethod.getParameters().isEmpty() && withObjectResult(functionType) == null) &&
                             implemented instanceof IMethodSignature &&
                             specializeReceiver(
                                 methodGroup,
                                 declaringType,
-                                ((IMethodSignature) implemented).getReturnType()
+                                MetadataHelper.getBoxedTypeOrSelf(((IMethodSignature) implemented).getReturnType())
                             )) {
 
                             return methodGroup;
                         }
 
-                        return adaptReturnType(methodGroup, targetMethod, (IGenericInstance) functionType);
+                        if (generic) {
+                            return adaptReturnType(methodGroup, targetMethod, (IGenericInstance) functionType);
+                        }
                     }
 
                     return methodGroup;
@@ -1258,7 +1262,7 @@ public class AstMethodBodyBuilder {
 
                 if (widenedReceiver) {
                     // A widened receiver would throw the bound of its type variable.
-                    final TypeReference thrown = thrownTypeArgument(methodReference);
+                    final TypeReference thrown = thrownTypeArgument(methodReference, byteCode.getOffset());
 
                     if (thrown != null) {
                         target = specializedReceiver(target, declaringType, thrown);
@@ -1723,10 +1727,11 @@ public class AstMethodBodyBuilder {
     }
 
     /**
-     * Returns the only exception declared by the method being decompiled which the type variable thrown
-     * by an invoked method accepts, or {@code null}.
+     * Returns the exception which the type variable thrown by an invoked method may stand for: the one
+     * caught around the invocation, or else the only one declared by the method being decompiled, or
+     * {@code null}.
      */
-    private TypeReference thrownTypeArgument(final MethodReference method) {
+    private TypeReference thrownTypeArgument(final MethodReference method, final int offset) {
         final MethodDefinition definition = method.resolve();
 
         if (definition == null) {
@@ -1737,6 +1742,12 @@ public class AstMethodBodyBuilder {
             if (any(definition.getThrownTypes(), t -> t.isGenericParameter() &&
                                                       t.getSimpleName().equals(variable.getSimpleName()))) {
 
+                final TypeReference caught = caughtType(variable, offset);
+
+                if (caught != null) {
+                    return caught;
+                }
+
                 final List<TypeReference> declared = new ArrayList<>();
 
                 for (final TypeReference thrown : _context.getCurrentMethod().getThrownTypes()) {
@@ -1746,6 +1757,27 @@ public class AstMethodBodyBuilder {
                 }
 
                 return declared.size() == 1 ? declared.get(0) : null;
+            }
+        }
+
+        return null;
+    }
+
+    /** Returns the type of the innermost handler around an instruction which a type variable accepts. */
+    private TypeReference caughtType(final GenericParameter variable, final int offset) {
+        final MethodBody body = _context.getCurrentMethod().getBody();
+
+        if (body == null) {
+            return null;
+        }
+
+        for (final ExceptionHandler handler : body.getExceptionHandlers()) {
+            if (handler.isCatch() &&
+                handler.getTryBlock().getFirstInstruction().getOffset() <= offset &&
+                offset <= handler.getTryBlock().getLastInstruction().getOffset() &&
+                accepts(variable, handler.getCatchType())) {
+
+                return handler.getCatchType();
             }
         }
 

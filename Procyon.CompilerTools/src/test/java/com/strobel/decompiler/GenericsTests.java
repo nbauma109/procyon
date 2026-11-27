@@ -91,6 +91,14 @@ public class GenericsTests extends DecompilerTest {
                 "        Keyed<String> u = (Keyed<String>) (Keyed) keyed((Keyed<?>) f);",
                 "        return u::get;",
                 "    }",
+                "    java.util.function.IntSupplier supply(Whole c) {",
+                "        Counted2<Integer> w = (Counted2<Integer>) (Counted2) whole((Counted2<?>) c);",
+                "        return w::get;",
+                "    }",
+                "    <T extends Counted2<?>> T whole(T t) { return t; }",
+                "    Whole whole(Whole w) { return w; }",
+                "    static class Counted2<X> { X get() { return null; } }",
+                "    static class Whole extends Counted2<Integer> { }",
                 "    java.util.function.Supplier<String[]> arrays(Several s) {",
                 "        Many<String> m = (Many<String>) (Many) many((Many<?>) s);",
                 "        return m::all;",
@@ -192,6 +200,15 @@ public class GenericsTests extends DecompilerTest {
             "    UnaryOperator<String> unary(final Fixed fixed) {\n" +
             "        return ((Keyed<String>)(Keyed)this.keyed((Keyed)fixed))::get;\n" +
             "    }\n" +
+            "    IntSupplier supply(final Whole whole) {\n" +
+            "        return ((Counted2<Integer>)(Counted2)this.whole((Counted2)whole))::get;\n" +
+            "    }\n" +
+            "    <T extends Counted2<?>> T whole(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Whole whole(final Whole whole) {\n" +
+            "        return whole;\n" +
+            "    }\n" +
             "    Supplier<String[]> arrays(final Several several) {\n" +
             "        return (Supplier)this.many((Many)several)::all;\n" +
             "    }\n" +
@@ -214,6 +231,13 @@ public class GenericsTests extends DecompilerTest {
             "    int element(final String s) {\n" +
             "        final CharSequence s2 = this.array((CharSequence)s)[0];\n" +
             "        return s2.length() + s2.charAt(0);\n" +
+            "    }\n" +
+            "    static class Whole extends Counted2<Integer> {\n" +
+            "    }\n" +
+            "    static class Counted2<X> {\n" +
+            "        X get() {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    static class Count extends Counted<Integer> {\n" +
             "    }\n" +
@@ -1074,6 +1098,14 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void act(final Risk risk) throws IOException {\n" +
             "        ((Hazard<IOException>)(Hazard)this.hazard((Hazard)risk)).act();\n" +
+            "    }\n" +
+            "    void caught(final Risk risk) {\n" +
+            "        try {\n" +
+            "            ((Hazard<IOException>)(Hazard)this.hazard((Hazard)risk)).act();\n" +
+            "        }\n" +
+            "        catch (final IOException e) {\n" +
+            "            e.printStackTrace();\n" +
+            "        }\n" +
             "    }\n" +
             "}\n"
         );
@@ -2140,6 +2172,15 @@ class Writes {
 
     void act(final Risk risk) throws IOException {
         ((Hazard<IOException>) (Hazard) this.hazard((Hazard<?>) risk)).act();
+    }
+
+    void caught(final Risk risk) {
+        try {
+            ((Hazard<IOException>) (Hazard) this.hazard((Hazard<?>) risk)).act();
+        }
+        catch (final IOException e) {
+            e.printStackTrace();
+        }
     }
 }
 
