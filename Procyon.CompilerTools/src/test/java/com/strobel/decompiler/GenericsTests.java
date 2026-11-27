@@ -234,6 +234,11 @@ public class GenericsTests extends DecompilerTest {
                 "        Taking<Integer, Integer> g2 = (Taking<Integer, Integer>) (Taking) taking((Taking<?, ?>) t);",
                 "        return g2::get;",
                 "    }",
+                "    interface Same<T> { T apply(T t); boolean equals(Object o); }",
+                "    Same<String> samely(Fixed f) {",
+                "        Keyed<String> m2 = (Keyed<String>) (Keyed) keyed((Keyed<?>) f);",
+                "        return m2::get;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -488,6 +493,9 @@ public class GenericsTests extends DecompilerTest {
             "    ToIntFunction<Ints> inherited(final Takes takes) {\n" +
             "        return ((Taking<Integer, Integer>)(Taking)this.taking((Taking)takes))::get;\n" +
             "    }\n" +
+            "    Same<String> samely(final Fixed fixed) {\n" +
+            "        return ((Keyed<String>)(Keyed)this.keyed((Keyed)fixed))::get;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -516,6 +524,10 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    interface Same<T> {\n" +
+            "        T apply(final T p0);\n" +
+            "        boolean equals(final Object p0);\n" +
             "    }\n" +
             "    static class Ints extends ArrayList<Integer> {\n" +
             "        private static final long serialVersionUID = 1L;\n" +
@@ -1495,6 +1507,13 @@ public class GenericsTests extends DecompilerTest {
             "    void chained(final Integer e, final List<String> a) {\n" +
             "        this.chain(e, a, 1);\n" +
             "    }\n" +
+            "    <E extends Number> void heaps(final E e, final List<String[]> a, final List<Integer> b) {\n" +
+            "    }\n" +
+            "    <N> void heaps(final Integer e, final Collection<? extends N[]> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    void heaped(final Integer e, final List<String[]> a, final List<Integer> b) {\n" +
+            "        this.heaps(e, a, b);\n" +
+            "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
             "    <N> void add(final Integer e, final Collection<N> list, final N n) {\n" +
@@ -1657,6 +1676,15 @@ public class GenericsTests extends DecompilerTest {
             "        catch (final SQLException e2) {\n" +
             "            e2.printStackTrace();\n" +
             "        }\n" +
+            "    }\n" +
+            "    <T extends Merger<?, ?>> T merger(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Merging merger(final Merging merging) {\n" +
+            "        return merging;\n" +
+            "    }\n" +
+            "    void merged(final Merging merging) throws IOException {\n" +
+            "        ((Merger<Serializable, IOException>)(Merger)this.merger((Merger)merging)).act(\"a\", 1);\n" +
             "    }\n" +
             "    void caught(final Risk risk) {\n" +
             "        try {\n" +
@@ -2763,6 +2791,16 @@ class Shared {
         this.chain(e, a, 1);
     }
 
+    <E extends Number> void heaps(final E e, final List<String[]> a, final List<Integer> b) {
+    }
+
+    <N> void heaps(final Integer e, final Collection<? extends N[]> a, final Collection<N> b) {
+    }
+
+    void heaped(final Integer e, final List<String[]> a, final List<Integer> b) {
+        this.heaps(e, a, b);
+    }
+
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {
     }
 
@@ -2958,6 +2996,18 @@ class Writes {
         }
     }
 
+    <T extends Merger<?, ?>> T merger(final T t) {
+        return t;
+    }
+
+    Merging merger(final Merging merging) {
+        return merging;
+    }
+
+    void merged(final Merging merging) throws IOException {
+        ((Merger<Serializable, IOException>) (Merger) this.merger((Merger<?, ?>) merging)).act("a", 1);
+    }
+
     void caught(final Risk risk) {
         try {
             ((Hazard<IOException>) (Hazard) this.hazard((Hazard<?>) risk)).act();
@@ -2981,6 +3031,15 @@ abstract class Risk extends Hazard<IOException> {
 
 @SuppressWarnings("unused") // decompiler fixture
 abstract class Wide extends Hazard<Exception> {
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+abstract class Merger<X, E extends Exception> {
+    abstract void act(X first, X second) throws E;
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+abstract class Merging extends Merger<Serializable, IOException> {
 }
 
 @SuppressWarnings("unused") // decompiler fixture

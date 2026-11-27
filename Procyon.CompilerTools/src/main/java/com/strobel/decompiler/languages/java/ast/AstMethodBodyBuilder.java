@@ -1962,12 +1962,28 @@ public class AstMethodBodyBuilder {
             if (argument != null && argument.getType() != null) {
                 final TypeReference declared = definition.getParameters().get(i).getParameterType();
 
-                addTypeArgument(typeArguments, declared, argument.getType());
-                addNestedTypeArguments(typeArguments, declared, argument.getType());
+                final Map<String, TypeReference> determined = new HashMap<>();
+
+                addTypeArgument(determined, declared, argument.getType());
+                addNestedTypeArguments(determined, declared, argument.getType());
+
+                for (final Map.Entry<String, TypeReference> entry : determined.entrySet()) {
+                    typeArguments.merge(entry.getKey(), entry.getValue(), AstMethodBodyBuilder::commonType);
+                }
             }
         }
 
         return typeArguments;
+    }
+
+    /** Returns a type which accepts the values of both types. */
+    private static TypeReference commonType(final TypeReference first, final TypeReference second) {
+        if (MetadataHelper.isAssignableFrom(first, second)) {
+            return first;
+        }
+
+        return MetadataHelper.isAssignableFrom(second, first) ? second
+                                                              : MetadataHelper.findCommonSuperType(first, second);
     }
 
     private boolean specializeReceiver(
@@ -2206,6 +2222,14 @@ public class AstMethodBodyBuilder {
         return null;
     }
 
+    private static boolean isObjectMethod(final MethodDefinition method) {
+        final String signature = method.getName() + method.getErasedSignature();
+
+        return "equals(Ljava/lang/Object;)Z".equals(signature) ||
+               "hashCode()I".equals(signature) ||
+               "toString()Ljava/lang/String;".equals(signature);
+    }
+
     /** Returns the abstract method of a functional interface, which it may inherit. */
     private static MethodDefinition descriptorOf(final TypeDefinition type) {
         if (type == null) {
@@ -2213,7 +2237,8 @@ public class AstMethodBodyBuilder {
         }
 
         for (final MethodDefinition method : type.getDeclaredMethods()) {
-            if (method.isAbstract()) {
+            // Redeclared methods of Object do not make an interface functional.
+            if (method.isAbstract() && !isObjectMethod(method)) {
                 return method;
             }
         }
@@ -2317,6 +2342,13 @@ public class AstMethodBodyBuilder {
                 final GenericParameter variable = variables.get(i);
 
                 if (variable.getSimpleName().equals(returned.getSimpleName())) {
+                    // Replacing a variable which also types the parameters would widen them too.
+                    if (any(method.getParameters(),
+                            p -> mentions(p.getParameterType(), variable.getSimpleName()))) {
+
+                        return null;
+                    }
+
                     final TypeReference bound = variable.hasExtendsBound() ? variable.getExtendsBound()
                                                                            : BuiltinTypes.Object;
 
@@ -3457,6 +3489,21 @@ public class AstMethodBodyBuilder {
                         !bind((IGenericInstance) bound, (IGenericInstance) asBound, bindings, wildcards)) {
 
                         return false;
+                    }
+                }
+
+                if (bound != null && bound.isArray() && !target.hasSuperBound()) {
+                    TypeReference element = bound;
+                    TypeReference passed = !source.isWildcardType() ? source : wildcardBound(source);
+
+                    while (passed != null && element.isArray() && passed.isArray()) {
+                        element = element.getElementType();
+                        passed = passed.getElementType();
+                    }
+
+                    // The elements of the argument must be subtypes of the type for which a variable stands.
+                    if (passed != null && element.isGenericParameter() && !passed.isPrimitive()) {
+                        wildcards.add(new AbstractMap.SimpleEntry<>((GenericParameter) element, passed));
                     }
                 }
 
