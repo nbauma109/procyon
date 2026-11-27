@@ -207,6 +207,28 @@ public class GenericsTests extends DecompilerTest {
                 "        Results<String, java.io.IOException> y = (Results<String, java.io.IOException>) (Results) results((Results<?, ?>) t);",
                 "        return y::get;",
                 "    }",
+                "    static class Wild<X, E extends Exception> { java.util.List<? extends X> get() throws E { return null; } }",
+                "    static class Wilder extends Wild<String, java.io.IOException> { }",
+                "    <T extends Wild<?, ?>> T wild(T t) { return t; }",
+                "    Wilder wild(Wilder t) { return t; }",
+                "    interface Some { java.util.List<? extends String> run() throws java.io.IOException; }",
+                "    Some wilded(Wilder t) {",
+                "        Wild<String, java.io.IOException> z = (Wild<String, java.io.IOException>) (Wild) wild((Wild<?, ?>) t);",
+                "        return z::get;",
+                "    }",
+                "    static class Early<X> { String put(X x) { return null; } String put(CharSequence x) { return null; } }",
+                "    static class Earlier extends Early<String> { }",
+                "    <T extends Early<?>> T early(T t) { return t; }",
+                "    Earlier early(Earlier t) { return t; }",
+                "    String before(Earlier t, String s, int n) {",
+                "        Early<String> b = t;",
+                "        String r = \"\";",
+                "        while (n-- > 0) {",
+                "            r += b.put(s);",
+                "            b = (Early<String>) (Early) early((Early<?>) t);",
+                "        }",
+                "        return r;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -434,6 +456,30 @@ public class GenericsTests extends DecompilerTest {
             "    Lists resulted(final Resulting resulting) {\n" +
             "        return ((Results<String, IOException>)(Results)this.results((Results)resulting))::get;\n" +
             "    }\n" +
+            "    <T extends Wild<?, ?>> T wild(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Wilder wild(final Wilder wilder) {\n" +
+            "        return wilder;\n" +
+            "    }\n" +
+            "    Some wilded(final Wilder wilder) {\n" +
+            "        return ((Wild<String, IOException>)(Wild)this.wild((Wild)wilder))::get;\n" +
+            "    }\n" +
+            "    <T extends Early<?>> T early(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Earlier early(final Earlier earlier) {\n" +
+            "        return earlier;\n" +
+            "    }\n" +
+            "    String before(final Earlier earlier, final String s, int n) {\n" +
+            "        Early early = earlier;\n" +
+            "        String string = \"\";\n" +
+            "        while (n-- > 0) {\n" +
+            "            string += early.put((Object)s);\n" +
+            "            early = this.early((Early)earlier);\n" +
+            "        }\n" +
+            "        return string;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -462,6 +508,26 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    static class Earlier extends Early<String> {\n" +
+            "    }\n" +
+            "    static class Early<X> {\n" +
+            "        String put(final X x) {\n" +
+            "            return null;\n" +
+            "        }\n" +
+            "        String put(final CharSequence charSequence) {\n" +
+            "            return null;\n" +
+            "        }\n" +
+            "    }\n" +
+            "    interface Some {\n" +
+            "        List<? extends String> run() throws IOException;\n" +
+            "    }\n" +
+            "    static class Wilder extends Wild<String, IOException> {\n" +
+            "    }\n" +
+            "    static class Wild<X, E extends Exception> {\n" +
+            "        List<? extends X> get() throws E, Exception {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    interface Lists {\n" +
             "        List<String> run() throws IOException;\n" +
@@ -1403,6 +1469,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void onlyWild(final Integer e, final List<Odd> list) {\n" +
             "        this.under2(e, list);\n" +
+            "    }\n" +
+            "    <E extends Number> void listsOf(final E e, final List<List<String>> a, final List<Integer> b) {\n" +
+            "    }\n" +
+            "    <N> void listsOf(final Integer e, final Collection<? extends List<N>> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    void listed(final Integer e, final List<List<String>> a, final List<Integer> b) {\n" +
+            "        this.listsOf(e, a, b);\n" +
             "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
@@ -2650,6 +2723,16 @@ class Shared {
 
     void onlyWild(final Integer e, final List<Odd> list) {
         this.under2(e, list);
+    }
+
+    <E extends Number> void listsOf(final E e, final List<List<String>> a, final List<Integer> b) {
+    }
+
+    <N> void listsOf(final Integer e, final Collection<? extends List<N>> a, final Collection<N> b) {
+    }
+
+    void listed(final Integer e, final List<List<String>> a, final List<Integer> b) {
+        this.listsOf(e, a, b);
     }
 
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {

@@ -280,6 +280,19 @@ public class AstMethodBodyBuilder {
         }
     }
 
+    /** Applies the casts which a raw receiver requires to an invocation built before the widening. */
+    private void keepEarlierMemberSelection(final InvocationExpression invocation) {
+        final MemberReference member = invocation.getUserData(Keys.MEMBER_REFERENCE);
+
+        if (member instanceof MethodReference && takesClassTypeVariables((MethodReference) member)) {
+            final List<Expression> arguments = new ArrayList<>(invocation.getArguments());
+
+            invocation.getArguments().clear();
+            keepMemberSelection((MethodReference) member, arguments);
+            invocation.getArguments().addAll(arguments);
+        }
+    }
+
     /**
      * A load may be built before the assignment which widens its local, as in the body of a loop: mark
      * it, along with the accesses to its members.
@@ -320,6 +333,11 @@ public class AstMethodBodyBuilder {
                 }
 
                 markWidened((Expression) parent, access);
+
+                if (parent instanceof InvocationExpression) {
+                    keepEarlierMemberSelection((InvocationExpression) parent);
+                }
+
                 access = (Expression) parent;
             }
         }
@@ -1872,12 +1890,21 @@ public class AstMethodBodyBuilder {
         for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
             final TypeReference source = sources.get(i);
 
-            if (source.isWildcardType() || source.isGenericParameter()) {
-                continue;
-            }
-
             TypeReference target = targets.get(i);
             TypeReference element = source;
+
+            // The bounds of matching wildcards tell as much as the types themselves.
+            if (element.isWildcardType() && target.isWildcardType() &&
+                element.hasSuperBound() == target.hasSuperBound() &&
+                wildcardBound(element) != null && wildcardBound(target) != null) {
+
+                element = wildcardBound(element);
+                target = wildcardBound(target);
+            }
+
+            if (element.isWildcardType() || element.isGenericParameter()) {
+                continue;
+            }
 
             while (target.isArray() && element.isArray()) {
                 target = target.getElementType();
@@ -3370,6 +3397,12 @@ public class AstMethodBodyBuilder {
         );
     }
 
+    /** Returns the lower or upper bound of a wildcard, or {@code null} if it is unbounded. */
+    private static TypeReference wildcardBound(final TypeReference wildcard) {
+        return wildcard.hasSuperBound() ? wildcard.getSuperBound()
+                                        : wildcard.hasExtendsBound() ? wildcard.getExtendsBound() : null;
+    }
+
     /**
      * Records the types for which the type variables of a parameter stand, however deeply they are
      * nested, and tells whether they agree.
@@ -3391,6 +3424,21 @@ public class AstMethodBodyBuilder {
                 final TypeReference bound = target.hasSuperBound() ? target.getSuperBound()
                                                                    : target.hasExtendsBound() ? target.getExtendsBound()
                                                                                               : null;
+
+                if (bound instanceof IGenericInstance) {
+                    // The variables within a parameterized bound stand for single types.
+                    final TypeReference passed = !source.isWildcardType() ? source : wildcardBound(source);
+                    final TypeDefinition definition = bound.resolve();
+                    final TypeReference asBound = passed != null && definition != null
+                                                  ? MetadataHelper.asSuper(definition, passed)
+                                                  : null;
+
+                    if (asBound instanceof IGenericInstance &&
+                        !bind((IGenericInstance) bound, (IGenericInstance) asBound, bindings, wildcards)) {
+
+                        return false;
+                    }
+                }
 
                 if (bound != null && bound.isGenericParameter()) {
                     // Whether the bound is a lower one is recorded with the variable and the argument.
