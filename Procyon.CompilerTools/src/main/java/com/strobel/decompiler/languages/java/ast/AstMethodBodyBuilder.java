@@ -837,7 +837,12 @@ public class AstMethodBodyBuilder {
                         final TypeReference thrown = thrownByDescriptor(targetMethod, byteCode.getInferredType());
 
                         if (thrown != null &&
-                            specializeReceiver(methodGroup, declaringType, thrownClassVariable(targetMethod), thrown)) {
+                            specializeReceiver(
+                                methodGroup,
+                                declaringType,
+                                Collections.singletonMap(thrownClassVariable(targetMethod), thrown),
+                                thrownClassVariable(targetMethod)
+                            )) {
                             return methodGroup;
                         }
                     }
@@ -866,11 +871,8 @@ public class AstMethodBodyBuilder {
                             specializeReceiver(
                                 methodGroup,
                                 declaringType,
-                                returned.getSimpleName(),
-                                resultTypeArgument(
-                                    declaredType(targetMethod),
-                                    ((IMethodSignature) implemented).getReturnType()
-                                )
+                                receiverTypeArguments(targetMethod, (IMethodSignature) implemented),
+                                returned.getSimpleName()
                             )) {
 
                             return methodGroup;
@@ -1280,7 +1282,12 @@ public class AstMethodBodyBuilder {
                 final Expression discarded = discardResultCast(receiver);
 
                 target = thrown != null
-                         ? specializedReceiver(discarded, declaringType, thrownClassVariable(methodReference), thrown)
+                         ? specializedReceiver(
+                             discarded,
+                             declaringType,
+                             Collections.singletonMap(thrownClassVariable(methodReference), thrown),
+                             thrownClassVariable(methodReference)
+                         )
                          : discarded;
 
                 if (takesVariables && target == discarded) {
@@ -1712,17 +1719,54 @@ public class AstMethodBodyBuilder {
         return MetadataHelper.getBoxedTypeOrSelf(argument);
     }
 
+    /**
+     * Returns the types for which the type variables of a class stand, as far as the parameters and the
+     * result of one of its methods determine them.
+     */
+    private static Map<String, TypeReference> receiverTypeArguments(
+        final MethodReference method,
+        final IMethodSignature implemented) {
+
+        final MethodDefinition definition = method.resolve();
+        final Map<String, TypeReference> arguments = new HashMap<>();
+        final List<ParameterDefinition> declared = definition.getParameters();
+        final List<ParameterDefinition> actual = implemented.getParameters();
+
+        for (int i = 0; i < declared.size() && i < actual.size(); i++) {
+            addTypeArgument(arguments, declared.get(i).getParameterType(), actual.get(i).getParameterType());
+        }
+
+        addTypeArgument(arguments, definition.getReturnType(), implemented.getReturnType());
+        return arguments;
+    }
+
+    private static void addTypeArgument(
+        final Map<String, TypeReference> arguments,
+        final TypeReference declared,
+        final TypeReference actual) {
+
+        TypeReference variable = declared;
+
+        while (variable.isArray()) {
+            variable = variable.getElementType();
+        }
+
+        if (variable.isGenericParameter()) {
+            arguments.put(variable.getSimpleName(), resultTypeArgument(declared, actual));
+        }
+    }
+
     private boolean specializeReceiver(
         final MethodGroupExpression methodGroup,
         final TypeReference declaringType,
-        final String variableName,
-        final TypeReference typeArgument) {
+        final Map<String, TypeReference> arguments,
+        final String required) {
 
         final Expression target = methodGroup.getTarget();
 
         target.remove();
 
-        final Expression specialized = specializedReceiver(target, declaringType, variableName, typeArgument);
+        final Expression specialized = specializedReceiver(target, declaringType, arguments, required);
 
         if (specialized == target) {
             methodGroup.setTarget(target);
@@ -1734,18 +1778,19 @@ public class AstMethodBodyBuilder {
     }
 
     /**
-     * Casts a receiver, through its raw type, to its class with the given argument for one of its type
-     * variables, if that variable accepts it.  Any other type argument is left unknown.
+     * Casts a receiver, through its raw type, to its class with the given arguments for its type
+     * variables, if the required one is among those which accept theirs.  Any other type argument is left
+     * unknown.
      */
     private Expression specializedReceiver(
         final Expression receiver,
         final TypeReference declaringType,
-        final String variableName,
-        final TypeReference typeArgument) {
+        final Map<String, TypeReference> arguments,
+        final String required) {
 
         final TypeDefinition definition = declaringType.resolve();
 
-        if (definition == null || typeArgument == null || typeArgument.isPrimitive()) {
+        if (definition == null) {
             return receiver;
         }
 
@@ -1753,12 +1798,14 @@ public class AstMethodBodyBuilder {
         boolean specialized = false;
 
         for (final GenericParameter variable : definition.getGenericParameters()) {
-            if (!variable.getSimpleName().equals(variableName)) {
-                typeArguments.add(com.strobel.assembler.metadata.WildcardType.unbounded());
-            }
-            else if (accepts(variable, typeArgument)) {
+            final TypeReference typeArgument = arguments.get(variable.getSimpleName());
+
+            if (typeArgument != null && !typeArgument.isPrimitive() && accepts(variable, typeArgument)) {
                 typeArguments.add(typeArgument);
-                specialized = true;
+                specialized |= variable.getSimpleName().equals(required);
+            }
+            else {
+                typeArguments.add(com.strobel.assembler.metadata.WildcardType.unbounded());
             }
         }
 
@@ -2701,6 +2748,7 @@ public class AstMethodBodyBuilder {
         final Map<Integer, TypeReference> argumentTypes) {
 
         final Map<String, TypeReference> bindings = new HashMap<>();
+        final List<Map.Entry<GenericParameter, TypeReference>> wildcards = new ArrayList<>();
 
         for (final Map.Entry<Integer, TypeReference> argument : argumentTypes.entrySet()) {
             final TypeReference parameterType = candidate.getParameters().get(argument.getKey()).getParameterType();
@@ -2718,8 +2766,38 @@ public class AstMethodBodyBuilder {
                 continue;
             }
 
-            if (!bind((IGenericInstance) parameterType, (IGenericInstance) asParameterType, bindings)) {
+            if (!bind((IGenericInstance) parameterType, (IGenericInstance) asParameterType, bindings, wildcards)) {
                 return false;
+            }
+        }
+
+        // A wildcard only constrains the type for which its variable stands.
+        for (final Map.Entry<GenericParameter, TypeReference> wildcard : wildcards) {
+            final TypeReference bound = bindings.get(wildcard.getKey().getSimpleName());
+
+            final TypeReference source = wildcard.getValue();
+
+            if (bound == null) {
+                continue;
+            }
+
+            if (source.isWildcardType() && source.hasSuperBound()) {
+                // Of "? super N", the argument must be a supertype of the type for which N stands.
+                final TypeReference argument = source.getSuperBound();
+
+                if (!argument.isWildcardType() && !MetadataHelper.isAssignableFrom(argument, bound)) {
+                    return false;
+                }
+            }
+            else {
+                // Of "? extends N", the argument must be a subtype of it.
+                final TypeReference argument = !source.isWildcardType() ? source
+                                                                        : source.hasExtendsBound() ? source.getExtendsBound()
+                                                                                                   : null;
+
+                if (argument == null || !MetadataHelper.isAssignableFrom(bound, argument)) {
+                    return false;
+                }
             }
         }
 
@@ -2827,7 +2905,8 @@ public class AstMethodBodyBuilder {
     private static boolean bind(
         final IGenericInstance parameter,
         final IGenericInstance argument,
-        final Map<String, TypeReference> bindings) {
+        final Map<String, TypeReference> bindings,
+        final List<Map.Entry<GenericParameter, TypeReference>> wildcards) {
 
         final List<TypeReference> targets = parameter.getTypeArguments();
         final List<TypeReference> sources = argument.getTypeArguments();
@@ -2835,6 +2914,23 @@ public class AstMethodBodyBuilder {
         for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
             final TypeReference target = targets.get(i);
             final TypeReference source = sources.get(i);
+
+            if (target.isWildcardType()) {
+                final TypeReference bound = target.hasSuperBound() ? target.getSuperBound()
+                                                                   : target.hasExtendsBound() ? target.getExtendsBound()
+                                                                                              : null;
+
+                if (bound != null && bound.isGenericParameter()) {
+                    // Whether the bound is a lower one is recorded with the variable and the argument.
+                    wildcards.add(new AbstractMap.SimpleEntry<>(
+                        (GenericParameter) bound,
+                        target.hasSuperBound() ? com.strobel.assembler.metadata.WildcardType.makeSuper(source)
+                                               : source
+                    ));
+                }
+
+                continue;
+            }
 
             if (source.isWildcardType()) {
                 continue;
@@ -2849,7 +2945,7 @@ public class AstMethodBodyBuilder {
             }
             else if (target instanceof IGenericInstance &&
                      source instanceof IGenericInstance &&
-                     !bind((IGenericInstance) target, (IGenericInstance) source, bindings)) {
+                     !bind((IGenericInstance) target, (IGenericInstance) source, bindings, wildcards)) {
 
                 return false;
             }

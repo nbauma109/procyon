@@ -125,6 +125,14 @@ public class GenericsTests extends DecompilerTest {
                 "        Both2<Integer, String> two = (Both2<Integer, String>) (Both2) both2((Both2<?, ?>) p);",
                 "        return two::get;",
                 "    }",
+                "    static class Mapping<X, Y> { X get(Y y) { return null; } }",
+                "    static class Mapped extends Mapping<Integer, Integer> { }",
+                "    <T extends Mapping<?, ?>> T mapping(T t) { return t; }",
+                "    Mapped mapping(Mapped m) { return m; }",
+                "    java.util.function.IntUnaryOperator mappedBy(Mapped m) {",
+                "        Mapping<Integer, Integer> o = (Mapping<Integer, Integer>) (Mapping) mapping((Mapping<?, ?>) m);",
+                "        return o::get;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -265,6 +273,15 @@ public class GenericsTests extends DecompilerTest {
             "    IntSupplier paired(final Pairing pairing) {\n" +
             "        return ((Both2<Integer, ?>)(Both2)this.both2((Both2)pairing))::get;\n" +
             "    }\n" +
+            "    <T extends Mapping<?, ?>> T mapping(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Mapped mapping(final Mapped mapped) {\n" +
+            "        return mapped;\n" +
+            "    }\n" +
+            "    IntUnaryOperator mappedBy(final Mapped mapped) {\n" +
+            "        return ((Mapping<Integer, Integer>)(Mapping)this.mapping((Mapping)mapped))::get;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -293,6 +310,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    static class Mapped extends Mapping<Integer, Integer> {\n" +
+            "    }\n" +
+            "    static class Mapping<X, Y> {\n" +
+            "        X get(final Y y) {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    static class Pairing extends Both2<Integer, String> {\n" +
             "    }\n" +
@@ -1111,6 +1135,15 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void below(final Integer e, final List<String> list) {\n" +
             "        this.under(e, list);\n" +
+            "    }\n" +
+            "    <E extends Number> void mixed(final E e, final List<String> a, final List<Integer> b) {\n" +
+            "    }\n" +
+            "    <N> void mixed(final Integer e, final Collection<? extends N> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    <N> void mixed(final Long e, final Collection<? super N> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    void wild(final Integer e, final List<String> a, final List<Integer> b) {\n" +
+            "        this.mixed(e, a, b);\n" +
             "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
@@ -2207,6 +2240,19 @@ class Shared {
 
     void below(final Integer e, final List<String> list) {
         this.under(e, list);
+    }
+
+    <E extends Number> void mixed(final E e, final List<String> a, final List<Integer> b) {
+    }
+
+    <N> void mixed(final Integer e, final Collection<? extends N> a, final Collection<N> b) {
+    }
+
+    <N> void mixed(final Long e, final Collection<? super N> a, final Collection<N> b) {
+    }
+
+    void wild(final Integer e, final List<String> a, final List<Integer> b) {
+        this.mixed(e, a, b);
     }
 
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {
