@@ -810,7 +810,7 @@ public class AstMethodBodyBuilder {
             }
 
             case ArrayLength:
-                final MemberReferenceExpression length = arg1.member("length");
+                final MemberReferenceExpression length = discardResultCast(arg1).member("length");
                 final TypeReference arrayType = single(byteCode.getArguments()).getInferredType();
 
                 if (arrayType != null) {
@@ -890,11 +890,11 @@ public class AstMethodBodyBuilder {
             }
 
             case LoadElement: {
-                return new IndexerExpression( byteCode.getOffset(), arg1, arg2);
+                return new IndexerExpression( byteCode.getOffset(), discardResultCast(arg1), arg2);
             }
             case StoreElement: {
                 return new AssignmentExpression(
-                    new IndexerExpression( byteCode.getOffset(), arg1, arg2),
+                    new IndexerExpression( byteCode.getOffset(), discardResultCast(arg1), arg2),
                     arg3
                 );
             }
@@ -1186,7 +1186,7 @@ public class AstMethodBodyBuilder {
                 creation = new ObjectCreationExpression( byteCode.getOffset(), _astBuilder.convertType(declaringType, options));
             }
 
-            creation.getArguments().addAll(adjustArgumentsForMethodCall(methodReference, arguments));
+            creation.getArguments().addAll(adjustArgumentsForMethodCall(methodReference, null, arguments));
             creation.putUserData(Keys.MEMBER_REFERENCE, methodReference);
 
             return creation;
@@ -1198,11 +1198,15 @@ public class AstMethodBodyBuilder {
             invocation = new InvocationExpression(
                 byteCode.getOffset(),
                 target,
-                adjustArgumentsForMethodCall(methodReference, arguments)
+                adjustArgumentsForMethodCall(methodReference, null, arguments)
             );
         }
         else {
-            final List<Expression> adjustedArguments = adjustArgumentsForMethodCall(methodReference, arguments);
+            final List<Expression> adjustedArguments = adjustArgumentsForMethodCall(
+                methodReference,
+                hasThis ? target : null,
+                arguments
+            );
 
             // The type arguments inferred from the arguments do not hold for a widened argument.
             final boolean widened = any(adjustedArguments, a -> a.getUserData(Keys.SELECTS_OVERLOAD) != null);
@@ -1257,7 +1261,7 @@ public class AstMethodBodyBuilder {
 
     /**
      * Removes the cast to a raw type where the result is discarded, as a cast cannot stand as a statement,
-     * or where its members are accessed, as their types would be erased too.
+     * or where its members or elements are accessed, as their types would be erased too.
      */
     private static Expression discardResultCast(final Expression expression) {
         if (expression.getUserData(Keys.RESULT_CAST) == null) {
@@ -1292,7 +1296,11 @@ public class AstMethodBodyBuilder {
     }
 
     @SuppressWarnings("UnusedParameters")
-    private List<Expression> adjustArgumentsForMethodCall(final MethodReference method, final List<Expression> arguments) {
+    private List<Expression> adjustArgumentsForMethodCall(
+        final MethodReference method,
+        final Expression receiver,
+        final List<Expression> arguments) {
+
         if (!arguments.isEmpty() && method.isConstructor()) {
             final TypeDefinition resolvedType = method.getDeclaringType().resolve();
 
@@ -1340,6 +1348,7 @@ public class AstMethodBodyBuilder {
 
                     return adjustArgumentsForMethodCallCore(
                         method,
+                        receiver,
                         method.getParameters().subList(start, end),
                         arguments.subList(start, end)
                     );
@@ -1347,11 +1356,12 @@ public class AstMethodBodyBuilder {
             }
         }
 
-        return adjustArgumentsForMethodCallCore(method, method.getParameters(), arguments);
+        return adjustArgumentsForMethodCallCore(method, receiver, method.getParameters(), arguments);
     }
 
     private List<Expression> adjustArgumentsForMethodCallCore(
         final MethodReference method,
+        final Expression receiver,
         final List<ParameterDefinition> parameters,
         final List<Expression> arguments) {
 
@@ -1380,7 +1390,13 @@ public class AstMethodBodyBuilder {
             final TypeReference aType = resolvedArgument.getType();
             final TypeReference pType = p.getParameterType();
 
-            final TypeReference boundType = overloadSelectingBound(method, p.getPosition(), aType);
+            final ResolveResult resolvedReceiver = receiver != null ? resolver.apply(receiver) : null;
+            final TypeReference boundType = overloadSelectingBound(
+                method,
+                resolvedReceiver != null ? resolvedReceiver.getType() : null,
+                p.getPosition(),
+                aType
+            );
 
             if (boundType != null) {
                 final ConvertTypeOptions boundOptions = new ConvertTypeOptions();
@@ -1573,6 +1589,7 @@ public class AstMethodBodyBuilder {
      */
     private TypeReference overloadSelectingBound(
         final MethodReference method,
+        final TypeReference receiverType,
         final int position,
         final TypeReference argumentType) {
 
@@ -1589,6 +1606,7 @@ public class AstMethodBodyBuilder {
         }
 
         final String signature = definition.getErasedSignature();
+        final List<TypeReference> competing = new ArrayList<>();
 
         for (final MethodReference candidate : overloads(definition)) {
             final TypeReference other = candidate.getParameters().get(position).getParameterType();
@@ -1598,29 +1616,130 @@ public class AstMethodBodyBuilder {
                 isAccessible(candidate) &&
                 MetadataHelper.isAssignableFrom(MetadataHelper.erase(other), argumentType)) {
 
-                return selectingBound((GenericParameter) declared);
+                competing.add(MetadataHelper.erase(other));
             }
         }
 
-        return null;
+        if (competing.isEmpty()) {
+            return null;
+        }
+
+        final TypeReference bound = selectingBound((GenericParameter) declared, definition, receiverType);
+
+        if (bound.isGenericParameter() || all(typesOf(bound), this::isAccessibleType)) {
+            return bound;
+        }
+
+        return accessibleSubstitute(typesOf(bound), argumentType, competing);
     }
 
     /**
      * Returns the type variable in scope which bounds a generic parameter, as erasing it would not
-     * satisfy the parameter, or the erasure of its bound.
+     * satisfy the parameter, or else the erasure of its bound, as seen from the receiver.
      */
-    private TypeReference selectingBound(final GenericParameter parameter) {
+    private TypeReference selectingBound(
+        final GenericParameter parameter,
+        final MethodDefinition method,
+        final TypeReference receiverType) {
+
         TypeReference bound = parameter;
 
         while (isForeignTypeVariable(bound) && ((GenericParameter) bound).hasExtendsBound()) {
             bound = ((GenericParameter) bound).getExtendsBound();
         }
 
-        if (bound.isGenericParameter() && isClassTypeVariableInScope((GenericParameter) bound)) {
-            return bound;
+        if (bound.isGenericParameter()) {
+            final GenericParameter variable = (GenericParameter) bound;
+
+            if (isClassTypeVariableInScope(variable)) {
+                return variable;
+            }
+
+            final TypeReference argument = typeArgumentOf(variable, method.getDeclaringType(), receiverType);
+
+            if (argument != null) {
+                return argument.isGenericParameter() ? argument : eraseBound(argument);
+            }
         }
 
         return eraseBound(MetadataHelper.getUpperBound(parameter));
+    }
+
+    /**
+     * Returns the type, nameable here, which the receiver substitutes for a type variable of the class
+     * declaring the invoked method, or {@code null}.
+     */
+    private TypeReference typeArgumentOf(
+        final GenericParameter variable,
+        final TypeDefinition declaringType,
+        final TypeReference receiverType) {
+
+        final TypeReference asDeclaringType = receiverType != null ? MetadataHelper.asSuper(declaringType, receiverType)
+                                                                   : null;
+
+        if (!(asDeclaringType instanceof IGenericInstance)) {
+            return null;
+        }
+
+        final List<TypeReference> arguments = ((IGenericInstance) asDeclaringType).getTypeArguments();
+        final List<GenericParameter> variables = declaringType.getGenericParameters();
+
+        for (int i = 0; i < variables.size() && i < arguments.size(); i++) {
+            final TypeReference argument = arguments.get(i);
+
+            if (variables.get(i).getSimpleName().equals(variable.getSimpleName()) &&
+                !argument.isWildcardType() &&
+                (!argument.isGenericParameter() || isClassTypeVariableInScope((GenericParameter) argument))) {
+
+                return argument;
+            }
+        }
+
+        return null;
+    }
+
+    private static List<TypeReference> typesOf(final TypeReference bound) {
+        if (!(bound instanceof ICompoundType)) {
+            return Collections.singletonList(bound);
+        }
+
+        final ICompoundType intersection = (ICompoundType) bound;
+        final List<TypeReference> types = new ArrayList<>(intersection.getInterfaces());
+
+        if (intersection.getBaseType() != null) {
+            types.add(intersection.getBaseType());
+        }
+
+        return types;
+    }
+
+    /**
+     * Finds a superclass of the argument which can be named here instead of an inaccessible bound: it
+     * must satisfy the bound and still be rejected by the other overloads.
+     */
+    private TypeReference accessibleSubstitute(
+        final List<TypeReference> bounds,
+        final TypeReference argumentType,
+        final List<TypeReference> competing) {
+
+        TypeDefinition type = argumentType.resolve();
+
+        while (type != null) {
+            final TypeDefinition candidate = type;
+
+            if (isAccessibleType(candidate) &&
+                all(bounds, bound -> MetadataHelper.isAssignableFrom(bound, candidate)) &&
+                !any(competing, other -> MetadataHelper.isAssignableFrom(other, candidate))) {
+
+                return candidate;
+            }
+
+            final TypeReference baseType = candidate.getBaseType();
+
+            type = baseType != null ? baseType.resolve() : null;
+        }
+
+        return null;
     }
 
     private boolean isClassTypeVariableInScope(final GenericParameter variable) {

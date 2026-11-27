@@ -321,6 +321,40 @@ public class GenericsTests extends DecompilerTest {
     }
 
     @Test
+    public void testBoundsSeenFromTheCaller() {
+        verifyOutput(
+            TypedCalls.class,
+            defaultSettings(),
+            "class TypedCalls {\n" +
+            "    String parameterized(final Typed<CharSequence> typed, final String s) {\n" +
+            "        return (String)typed.take((CharSequence)s);\n" +
+            "    }\n" +
+            "    String inherited(final StringsTyped typed, final String s) {\n" +
+            "        return (String)typed.take((CharSequence)s);\n" +
+            "    }\n" +
+            "    <T extends CharSequence> List<T>[] wrap(final T value) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<String>[] wrap(final String value) {\n" +
+            "        return (List[])this.wrap((CharSequence)value);\n" +
+            "    }\n" +
+            "    int element(final String value) {\n" +
+            "        return this.wrap((CharSequence)value)[0].get(0).length();\n" +
+            "    }\n" +
+            "    int count(final String value) {\n" +
+            "        return this.wrap((CharSequence)value).length;\n" +
+            "    }\n" +
+            "    void store(final String value) {\n" +
+            "        this.wrap((CharSequence)value)[0] = null;\n" +
+            "    }\n" +
+            "    void hiddenBound(final OverloadsElsewhere.Child child) {\n" +
+            "        OverloadsElsewhere.take((OverloadsElsewhere.Parent)child);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
     public void testOverloadsOfAnotherPackage() {
         verifyOutput(
             Outsider.class,
@@ -589,6 +623,57 @@ class ClassBound<X> {
     @SuppressWarnings("unchecked")
     List<String>[] array(final String value) {
         return (List[]) array((CharSequence) value);
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class Typed<X> {
+    <T extends X> T take(final T value) {
+        return value;
+    }
+
+    String take(final String value) {
+        return value;
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class StringsTyped extends Typed<CharSequence> {
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class TypedCalls {
+    String parameterized(final Typed<CharSequence> typed, final String s) {
+        return (String) typed.take((CharSequence) s);
+    }
+
+    String inherited(final StringsTyped typed, final String s) {
+        return (String) typed.take((CharSequence) s);
+    }
+
+    <T extends CharSequence> List<T>[] wrap(final T value) {
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    List<String>[] wrap(final String value) {
+        return (List[]) wrap((CharSequence) value);
+    }
+
+    int element(final String value) {
+        return wrap((CharSequence) value)[0].get(0).length();
+    }
+
+    int count(final String value) {
+        return wrap((CharSequence) value).length;
+    }
+
+    void store(final String value) {
+        wrap((CharSequence) value)[0] = null;
+    }
+
+    void hiddenBound(final OverloadsElsewhere.Child child) {
+        OverloadsElsewhere.take((OverloadsElsewhere.Parent) child);
     }
 }
 

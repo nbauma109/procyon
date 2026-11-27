@@ -15,6 +15,18 @@ public class OverloadsElsewhere {
     protected static void read(final String s) {
     }
 
+    public static class Parent extends Hidden<String> {
+    }
+
+    public static class Child extends Parent {
+    }
+
+    public static <H extends Hidden<?>> void take(final H h) {
+    }
+
+    public static void take(final Child child) {
+    }
+
     public static <C extends CharSequence> Hidden<C> hidden(final C c) {
         return null;
     }
