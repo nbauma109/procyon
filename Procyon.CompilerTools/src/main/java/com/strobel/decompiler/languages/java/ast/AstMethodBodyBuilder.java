@@ -840,7 +840,9 @@ public class AstMethodBodyBuilder {
                             final Object signature = callSite.getBootstrapArguments().get(2);
                             final Map<String, TypeReference> typeArguments =
                                 signature instanceof IMethodSignature
-                                ? receiverTypeArguments(targetMethod, (IMethodSignature) signature)
+                                ? receiverTypeArguments(targetMethod,
+                                                        (IMethodSignature) signature,
+                                                        byteCode.getInferredType())
                                 : new HashMap<String, TypeReference>();
 
                             typeArguments.put(thrownClassVariable(targetMethod), thrown);
@@ -881,7 +883,7 @@ public class AstMethodBodyBuilder {
                             specializeReceiver(
                                 methodGroup,
                                 declaringType,
-                                receiverTypeArguments(targetMethod, (IMethodSignature) implemented),
+                                receiverTypeArguments(targetMethod, (IMethodSignature) implemented, functionType),
                                 returned.getSimpleName()
                             )) {
 
@@ -1406,6 +1408,10 @@ public class AstMethodBodyBuilder {
                 arguments
             );
 
+            if (target.getUserData(Keys.RESULT_CAST) != null && takesClassTypeVariables(methodReference)) {
+                keepMemberSelection(methodReference, adjustedArguments);
+            }
+
             // The type arguments inferred from the arguments do not hold for a widened argument.
             final boolean widened = any(adjustedArguments, a -> a.getUserData(Keys.SELECTS_OVERLOAD) != null);
 
@@ -1551,9 +1557,25 @@ public class AstMethodBodyBuilder {
      */
     private void widenVariable(final Variable variable, final Expression value) {
         if (value instanceof ConditionalExpression) {
+            final Expression whenTrue = ((ConditionalExpression) value).getTrueExpression();
+            final Expression whenFalse = ((ConditionalExpression) value).getFalseExpression();
+            final TypeReference first = whenTrue.getUserData(Keys.WIDENED_TYPE);
+            final TypeReference second = whenFalse.getUserData(Keys.WIDENED_TYPE);
+
             // Either branch may hold the widened value.
-            widenVariable(variable, ((ConditionalExpression) value).getTrueExpression());
-            widenVariable(variable, ((ConditionalExpression) value).getFalseExpression());
+            widenVariable(variable, whenTrue);
+            widenVariable(variable, whenFalse);
+
+            final TypeReference current = variable.getType();
+
+            if (first != null && second != null && current != null &&
+                _widenedVariables.contains(variable) &&
+                (!MetadataHelper.isAssignableFrom(current, first) ||
+                 !MetadataHelper.isAssignableFrom(current, second))) {
+
+                variable.setType(MetadataHelper.findCommonSuperType(first, second));
+            }
+
             return;
         }
 
@@ -1735,7 +1757,8 @@ public class AstMethodBodyBuilder {
      */
     private static Map<String, TypeReference> receiverTypeArguments(
         final MethodReference method,
-        final IMethodSignature implemented) {
+        final IMethodSignature implemented,
+        final TypeReference functionType) {
 
         final MethodDefinition definition = method.resolve();
         final Map<String, TypeReference> arguments = new HashMap<>();
@@ -1747,7 +1770,49 @@ public class AstMethodBodyBuilder {
         }
 
         addTypeArgument(arguments, definition.getReturnType(), implemented.getReturnType());
+
+        // The implemented signature is erased, unlike the parameters of the functional interface.
+        final MethodDefinition descriptor = functionType != null ? descriptorOf(functionType.resolve()) : null;
+
+        for (int i = 0; descriptor != null && i < declared.size() && i < descriptor.getParameters().size(); i++) {
+            final TypeReference actualType = typeArgumentIn(descriptor.getParameters().get(i).getParameterType(),
+                                                            descriptor,
+                                                            functionType);
+
+            if (actualType != null) {
+                addNestedTypeArguments(arguments, declared.get(i).getParameterType(), actualType);
+            }
+        }
+
         return arguments;
+    }
+
+    private static void addNestedTypeArguments(
+        final Map<String, TypeReference> arguments,
+        final TypeReference declared,
+        final TypeReference actual) {
+
+        if (!(declared instanceof IGenericInstance) || !(actual instanceof IGenericInstance)) {
+            return;
+        }
+
+        final List<TypeReference> targets = ((IGenericInstance) declared).getTypeArguments();
+        final List<TypeReference> sources = ((IGenericInstance) actual).getTypeArguments();
+
+        for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
+            final TypeReference source = sources.get(i);
+
+            if (source.isWildcardType() || source.isGenericParameter()) {
+                continue;
+            }
+
+            if (targets.get(i).isGenericParameter()) {
+                arguments.put(targets.get(i).getSimpleName(), source);
+            }
+            else {
+                addNestedTypeArguments(arguments, targets.get(i), source);
+            }
+        }
     }
 
     private static void addTypeArgument(
@@ -2066,6 +2131,36 @@ public class AstMethodBodyBuilder {
         }
 
         return null;
+    }
+
+    /**
+     * A raw receiver erases the parameters typed by its class variables, so that another overload could
+     * take the arguments: they are cast to those erasures.
+     */
+    private void keepMemberSelection(final MethodReference method, final List<Expression> arguments) {
+        final MethodDefinition definition = method.resolve();
+
+        if (definition == null || overloads(definition).size() < 2) {
+            return;
+        }
+
+        final List<ParameterDefinition> parameters = definition.getParameters();
+
+        for (int i = 0; i < arguments.size() && i < parameters.size(); i++) {
+            final TypeReference declared = parameters.get(i).getParameterType();
+
+            if (declared.isGenericParameter() &&
+                ((GenericParameter) declared).getOwner() instanceof TypeReference) {
+
+                final CastExpression cast = new CastExpression(
+                    _astBuilder.convertType(MetadataHelper.erase(MetadataHelper.getUpperBound(declared))),
+                    arguments.get(i)
+                );
+
+                cast.putUserData(Keys.RESULT_CAST, true);
+                arguments.set(i, cast);
+            }
+        }
     }
 
     private Expression rawReceiver(final Expression receiver, final TypeReference declaringType) {
@@ -2789,7 +2884,18 @@ public class AstMethodBodyBuilder {
             }
         }
 
-        if (!satisfiesBounds(candidate.resolve(), bindings)) {
+        final Map<String, TypeReference> inferred = new HashMap<>(bindings);
+
+        // An argument of a type variable itself tells what it stands for when nothing else does.
+        for (final Map.Entry<Integer, TypeReference> argument : argumentTypes.entrySet()) {
+            final TypeReference parameterType = candidate.getParameters().get(argument.getKey()).getParameterType();
+
+            if (parameterType.isGenericParameter() && !argument.getValue().isPrimitive()) {
+                inferred.putIfAbsent(parameterType.getSimpleName(), argument.getValue());
+            }
+        }
+
+        if (!satisfiesBounds(candidate.resolve(), inferred)) {
             return false;
         }
 

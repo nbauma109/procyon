@@ -142,6 +142,20 @@ public class GenericsTests extends DecompilerTest {
                 "        Giving<String, java.io.IOException> v = (Giving<String, java.io.IOException>) (Giving) giving((Giving<?, ?>) a);",
                 "        return v::get;",
                 "    }",
+                "    <T extends java.io.Serializable> T two(T t) { return t; }",
+                "    String two(String s) { return s; }",
+                "    String either(boolean flag, String s) {",
+                "        Object o = flag ? take((CharSequence) s) : two((java.io.Serializable) s);",
+                "        return o.toString() + o.hashCode();",
+                "    }",
+                "    static class Taking<X, Y> { X get(java.util.List<Y> list) { return null; } }",
+                "    static class Takes extends Taking<Integer, Integer> { }",
+                "    <T extends Taking<?, ?>> T taking(T t) { return t; }",
+                "    Takes taking(Takes t) { return t; }",
+                "    java.util.function.ToIntFunction<java.util.List<Integer>> listed(Takes t) {",
+                "        Taking<Integer, Integer> l = (Taking<Integer, Integer>) (Taking) taking((Taking<?, ?>) t);",
+                "        return l::get;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -300,6 +314,25 @@ public class GenericsTests extends DecompilerTest {
             "    Source sourced(final Gives gives) {\n" +
             "        return ((Giving<String, IOException>)(Giving)this.giving((Giving)gives))::get;\n" +
             "    }\n" +
+            "    <T extends Serializable> T two(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    String two(final String s) {\n" +
+            "        return s;\n" +
+            "    }\n" +
+            "    String either(final boolean b, final String s) {\n" +
+            "        final Object s2 = b ? this.take((CharSequence)s) : this.two((Serializable)s);\n" +
+            "        return s2.toString() + s2.hashCode();\n" +
+            "    }\n" +
+            "    <T extends Taking<?, ?>> T taking(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Takes taking(final Takes takes) {\n" +
+            "        return takes;\n" +
+            "    }\n" +
+            "    ToIntFunction<List<Integer>> listed(final Takes takes) {\n" +
+            "        return ((Taking<Integer, Integer>)(Taking)this.taking((Taking)takes))::get;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -328,6 +361,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    static class Takes extends Taking<Integer, Integer> {\n" +
+            "    }\n" +
+            "    static class Taking<X, Y> {\n" +
+            "        X get(final List<Y> list) {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    interface Source {\n" +
             "        String run() throws IOException;\n" +
@@ -1192,6 +1232,13 @@ public class GenericsTests extends DecompilerTest {
             "        this.odd(e, odd);\n" +
             "        this.tables(e, a, b);\n" +
             "    }\n" +
+            "    <E extends Number> void lone(final E e, final Odd odd) {\n" +
+            "    }\n" +
+            "    <N extends Comparable<N>> void lone(final Integer e, final N n) {\n" +
+            "    }\n" +
+            "    void alone(final Integer e, final Odd odd) {\n" +
+            "        this.lone(e, odd);\n" +
+            "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
             "    <N> void add(final Integer e, final Collection<N> list, final N n) {\n" +
@@ -1268,6 +1315,15 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    List<String>[] arrays(final String s) {\n" +
             "        return null;\n" +
+            "    }\n" +
+            "    <T extends CharSequence> Slot<T> slot(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    Slot<String> slot(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    void member(final String s) {\n" +
+            "        ((Slot)this.slot((CharSequence)s)).put((Object)s);\n" +
             "    }\n" +
             "    void element(final String s, final List<String> list) {\n" +
             "        ((List[])(List[])this.arrays((CharSequence)s))[0] = list;\n" +
@@ -2332,6 +2388,16 @@ class Shared {
         this.tables(e, a, b);
     }
 
+    <E extends Number> void lone(final E e, final Odd odd) {
+    }
+
+    <N extends Comparable<N>> void lone(final Integer e, final N n) {
+    }
+
+    void alone(final Integer e, final Odd odd) {
+        this.lone(e, odd);
+    }
+
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {
     }
 
@@ -2416,6 +2482,18 @@ class Writes {
         return null;
     }
 
+    <T extends CharSequence> Slot<T> slot(final T t) {
+        return null;
+    }
+
+    Slot<String> slot(final String s) {
+        return null;
+    }
+
+    void member(final String s) {
+        ((Slot<String>) (Slot) this.slot((CharSequence) s)).put(s);
+    }
+
     void element(final String s, final List<String> list) {
         ((List<String>[]) (List[]) this.arrays((CharSequence) s))[0] = list;
     }
@@ -2463,6 +2541,15 @@ abstract class Risk extends Hazard<IOException> {
 
 @SuppressWarnings("unused") // decompiler fixture
 abstract class Odd implements Comparable<String> {
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class Slot<X> {
+    void put(final X x) {
+    }
+
+    void put(final CharSequence x) {
+    }
 }
 
 @SuppressWarnings("unused") // decompiler fixture
