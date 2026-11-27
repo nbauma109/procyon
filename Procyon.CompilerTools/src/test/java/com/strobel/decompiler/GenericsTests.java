@@ -250,6 +250,25 @@ public class GenericsTests extends DecompilerTest {
                 "        Joiner<java.io.Serializable, java.io.IOException> j = (Joiner<java.io.Serializable, java.io.IOException>) (Joiner) joiner((Joiner<?, ?>) t);",
                 "        return j::act;",
                 "    }",
+                "    static class Rows<X, E extends Exception> { java.util.List<X>[] get() throws E { return null; } }",
+                "    static class Rowed extends Rows<String, java.io.IOException> { }",
+                "    <T extends Rows<?, ?>> T rows(T t) { return t; }",
+                "    Rowed rows(Rowed t) { return t; }",
+                "    interface Base { default String run() throws Exception { return null; } }",
+                "    interface Again extends Base { String run() throws java.io.IOException; }",
+                "    interface Grid { java.util.List<String>[] run() throws java.io.IOException; }",
+                "    Grid gridded(Rowed t) {",
+                "        Rows<String, java.io.IOException> k = (Rows<String, java.io.IOException>) (Rows) rows((Rows<?, ?>) t);",
+                "        return k::get;",
+                "    }",
+                "    static class Texts<E extends Exception> { String get() throws E { return null; } }",
+                "    static class Texted extends Texts<java.io.IOException> { }",
+                "    <T extends Texts<?>> T texts(T t) { return t; }",
+                "    Texted texts(Texted t) { return t; }",
+                "    Again again(Texted t) {",
+                "        Texts<java.io.IOException> a = (Texts<java.io.IOException>) (Texts) texts((Texts<?>) t);",
+                "        return a::get;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -516,6 +535,24 @@ public class GenericsTests extends DecompilerTest {
             "    Both3 joined(final Joining joining) {\n" +
             "        return ((Joiner<Serializable, IOException>)(Joiner)this.joiner((Joiner)joining))::act;\n" +
             "    }\n" +
+            "    <T extends Rows<?, ?>> T rows(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Rowed rows(final Rowed rowed) {\n" +
+            "        return rowed;\n" +
+            "    }\n" +
+            "    Grid gridded(final Rowed rowed) {\n" +
+            "        return ((Rows<String, IOException>)(Rows)this.rows((Rows)rowed))::get;\n" +
+            "    }\n" +
+            "    <T extends Texts<?>> T texts(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Texted texts(final Texted texted) {\n" +
+            "        return texted;\n" +
+            "    }\n" +
+            "    Again again(final Texted texted) {\n" +
+            "        return ((Texts<IOException>)(Texts)this.texts((Texts)texted))::get;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -544,6 +581,31 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    static class Texted extends Texts<IOException> {\n" +
+            "    }\n" +
+            "    static class Texts<E extends Exception> {\n" +
+            "        String get() throws E, Exception {\n" +
+            "            return null;\n" +
+            "        }\n" +
+            "    }\n" +
+            "    interface Grid {\n" +
+            "        List<String>[] run() throws IOException;\n" +
+            "    }\n" +
+            "    interface Again extends Base {\n" +
+            "        String run() throws IOException;\n" +
+            "    }\n" +
+            "    interface Base {\n" +
+            "        default String run() throws Exception {\n" +
+            "            return null;\n" +
+            "        }\n" +
+            "    }\n" +
+            "    static class Rowed extends Rows<String, IOException> {\n" +
+            "    }\n" +
+            "    static class Rows<X, E extends Exception> {\n" +
+            "        List<X>[] get() throws E, Exception {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    interface Both3 extends Dummy, Runner {\n" +
             "        default void dummy() {\n" +
@@ -1722,6 +1784,15 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void merged(final Merging merging) throws IOException {\n" +
             "        ((Merger<Serializable, IOException>)(Merger)this.merger((Merger)merging)).act(\"a\", 1);\n" +
+            "    }\n" +
+            "    <T extends Hazard<?>> T quiet(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Calm quiet(final Calm calm) {\n" +
+            "        return calm;\n" +
+            "    }\n" +
+            "    void unchecked(final Calm calm) {\n" +
+            "        ((Hazard<RuntimeException>)(Hazard)this.quiet((Hazard)calm)).act();\n" +
             "    }\n" +
             "    void caught(final Risk risk) {\n" +
             "        try {\n" +
@@ -3044,6 +3115,17 @@ class Writes {
     void merged(final Merging merging) throws IOException {
         ((Merger<Serializable, IOException>) (Merger) this.merger((Merger<?, ?>) merging)).act("a", 1);
     }
+    <T extends Hazard<?>> T quiet(final T t) {
+        return t;
+    }
+
+    Calm quiet(final Calm calm) {
+        return calm;
+    }
+
+    void unchecked(final Calm calm) {
+        ((Hazard<RuntimeException>) (Hazard) this.quiet((Hazard<?>) calm)).act();
+    }
 
     void caught(final Risk risk) {
         try {
@@ -3068,6 +3150,10 @@ abstract class Risk extends Hazard<IOException> {
 
 @SuppressWarnings("unused") // decompiler fixture
 abstract class Wide extends Hazard<Exception> {
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+abstract class Calm extends Hazard<RuntimeException> {
 }
 
 @SuppressWarnings("unused") // decompiler fixture

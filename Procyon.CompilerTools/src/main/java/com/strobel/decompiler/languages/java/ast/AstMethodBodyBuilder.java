@@ -1899,6 +1899,11 @@ public class AstMethodBodyBuilder {
         final TypeReference declared,
         final TypeReference actual) {
 
+        if (declared.isArray() && actual.isArray()) {
+            addNestedTypeArguments(arguments, declared.getElementType(), actual.getElementType());
+            return;
+        }
+
         if (!(declared instanceof IGenericInstance)) {
             return;
         }
@@ -2110,6 +2115,9 @@ public class AstMethodBodyBuilder {
 
         candidates.addAll(_context.getCurrentMethod().getThrownTypes());
 
+        // Nothing needs to be caught or declared for an unchecked exception.
+        candidates.add(runtimeException());
+
         final List<GenericParameter> variables = thrownClassVariables(method);
 
         // A single variable must stand for a type which leaves every handler reachable.
@@ -2137,7 +2145,7 @@ public class AstMethodBodyBuilder {
      * Returns the exceptions of a functional interface for which the type variables thrown by a
      * referenced method may stand.
      */
-    private static Map<String, TypeReference> thrownByDescriptor(
+    private Map<String, TypeReference> thrownByDescriptor(
         final MethodReference method,
         final TypeReference functionType) {
 
@@ -2154,7 +2162,13 @@ public class AstMethodBodyBuilder {
             }
         }
 
+        candidates.add(runtimeException());
+
         return assignExceptions(thrownClassVariables(method), candidates);
+    }
+
+    private TypeReference runtimeException() {
+        return _parser.parseTypeDescriptor("java/lang/RuntimeException");
     }
 
     /**
@@ -2253,14 +2267,22 @@ public class AstMethodBodyBuilder {
 
         addInterfaceMethods(type, methods);
 
-        // An inherited method which a default one overrides is no longer abstract.
+        // Only the declaration of the most derived interface counts, whether abstract or default.
         return firstOrDefault(
             methods,
             method -> method.isAbstract() &&
                       !isObjectMethod(method) &&
-                      !any(methods, other -> other.isDefault() &&
-                                             parameterSignature(other).equals(parameterSignature(method)))
+                      !any(methods, other -> overrides(other, method))
         );
+    }
+
+    private static boolean overrides(final MethodDefinition method, final MethodDefinition inherited) {
+        final TypeDefinition type = method.getDeclaringType();
+
+        return !type.isEquivalentTo(inherited.getDeclaringType()) &&
+               parameterSignature(method).equals(parameterSignature(inherited)) &&
+               MetadataHelper.isSubType(MetadataHelper.erase(type),
+                                        MetadataHelper.erase(inherited.getDeclaringType()));
     }
 
     private static void addInterfaceMethods(final TypeDefinition type, final List<MethodDefinition> methods) {
