@@ -199,7 +199,7 @@ public class GenericsTests extends DecompilerTest {
     }
 
     @Test
-    public void testNoExplicitTypeArgumentsForAWidenedArgument() {
+    public void testExplicitTypeArgumentsForAWidenedArgument() {
         verifyOutput(
             BoundOverloads.class,
             createSettings(OPTION_EXPLICIT_TYPE_ARGUMENTS),
@@ -213,12 +213,12 @@ public class GenericsTests extends DecompilerTest {
             "        return buffer;\n" +
             "    }\n" +
             "    StringBuffer append(final StringBuffer buffer) {\n" +
-            "        return (StringBuffer)this.append((Appendable)buffer);\n" +
+            "        return (StringBuffer)this.<Appendable>append((Appendable)buffer);\n" +
             "    }\n" +
             "    <T> void accept(final T value) {\n" +
             "    }\n" +
             "    void accept(final String value) {\n" +
-            "        this.accept((Object)value);\n" +
+            "        this.<Object>accept((Object)value);\n" +
             "    }\n" +
             "    <T extends Comparable<T>> T take(final T value) {\n" +
             "        return value;\n" +
@@ -230,10 +230,10 @@ public class GenericsTests extends DecompilerTest {
             "        return null;\n" +
             "    }\n" +
             "    List<String> wrap(final String value) {\n" +
-            "        return (List)this.wrap((CharSequence)value);\n" +
+            "        return (List)this.<CharSequence>wrap((CharSequence)value);\n" +
             "    }\n" +
             "    void discard(final String value) {\n" +
-            "        this.wrap((CharSequence)value);\n" +
+            "        this.<CharSequence>wrap((CharSequence)value);\n" +
             "    }\n" +
             "    <T extends CharSequence & Runnable> T intersect(final T value) {\n" +
             "        return value;\n" +
@@ -242,7 +242,7 @@ public class GenericsTests extends DecompilerTest {
             "        return (Both)this.intersect((CharSequence & Runnable)value);\n" +
             "    }\n" +
             "    int length(final String value) {\n" +
-            "        return this.wrap((CharSequence)value).get(0).length();\n" +
+            "        return this.<CharSequence>wrap((CharSequence)value).get(0).length();\n" +
             "    }\n" +
             "    <T extends CharSequence> Holder<T> hold(final T value) {\n" +
             "        return null;\n" +
@@ -251,7 +251,7 @@ public class GenericsTests extends DecompilerTest {
             "        return null;\n" +
             "    }\n" +
             "    int heldLength(final String value) {\n" +
-            "        return this.hold((CharSequence)value).value.length();\n" +
+            "        return this.<CharSequence>hold((CharSequence)value).value.length();\n" +
             "    }\n" +
             "}\n"
         );
@@ -323,6 +323,48 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void relayed(final FileNotFoundException e) throws IOException {\n" +
             "        Funnel.relay((IOException)e);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testBoundWhichIsAVariableOfTheCaller() {
+        verifyOutput(
+            ShelfCaller.class,
+            defaultSettings(),
+            "class ShelfCaller {\n" +
+            "    <Y> String borrow(final Shelf<Y> shelf, final String s) {\n" +
+            "        return (String)shelf.take((Y)s);\n" +
+            "    }\n" +
+            "}\n"
+        );
+    }
+
+    @Test
+    public void testIndependentTypeArgumentsAndElementsOfWidenedCalls() {
+        verifyOutput(
+            Pairs.class,
+            defaultSettings(),
+            "class Pairs {\n" +
+            "    <T extends CharSequence, R> List<R> both(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<String> both(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    <T extends CharSequence> List<T>[] arrays(final T t) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    List<String>[] arrays(final String s) {\n" +
+            "        return null;\n" +
+            "    }\n" +
+            "    int independent(final String s) {\n" +
+            "        return this.<CharSequence, String>both((CharSequence)s).get(0).length();\n" +
+            "    }\n" +
+            "    int element(final String s) {\n" +
+            "        final List<CharSequence> list = (List)this.arrays((CharSequence)s)[0];\n" +
+            "        return list.size();\n" +
             "    }\n" +
             "}\n"
         );
@@ -825,6 +867,52 @@ class FunnelCaller {
 
     void relayed(final FileNotFoundException e) throws IOException {
         Funnel.relay((IOException) e);
+    }
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+class Shelf<X> {
+    <T extends X> T take(final T t) {
+        return t;
+    }
+
+    String take(final String s) {
+        return s;
+    }
+}
+
+@SuppressWarnings({ "unused", "unchecked" }) // decompiler fixture
+class ShelfCaller {
+    <Y> String borrow(final Shelf<Y> shelf, final String s) {
+        return (String) shelf.take((Y) (Object) s);
+    }
+}
+
+@SuppressWarnings({ "unused", "unchecked" }) // decompiler fixture
+class Pairs {
+    <T extends CharSequence, R> List<R> both(final T t) {
+        return null;
+    }
+
+    List<String> both(final String s) {
+        return null;
+    }
+
+    <T extends CharSequence> List<T>[] arrays(final T t) {
+        return null;
+    }
+
+    List<String>[] arrays(final String s) {
+        return null;
+    }
+
+    int independent(final String s) {
+        return this.<CharSequence, String>both((CharSequence) s).get(0).length();
+    }
+
+    int element(final String s) {
+        final List<CharSequence> list = this.arrays((CharSequence) s)[0];
+        return list.size();
     }
 }
 

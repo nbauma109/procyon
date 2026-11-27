@@ -890,7 +890,14 @@ public class AstMethodBodyBuilder {
             }
 
             case LoadElement: {
-                return new IndexerExpression( byteCode.getOffset(), discardResultCast(arg1), arg2);
+                final boolean widened = isWidened(arg1);
+                final IndexerExpression element = new IndexerExpression( byteCode.getOffset(), discardResultCast(arg1), arg2);
+
+                if (widened) {
+                    element.putUserData(Keys.WIDENED_RECEIVER, true);
+                }
+
+                return element;
             }
             case StoreElement: {
                 return new AssignmentExpression(
@@ -1108,8 +1115,7 @@ public class AstMethodBodyBuilder {
         if (hasThis) {
             final Expression receiver = arguments.remove(0);
 
-            widenedReceiver = receiver.getUserData(Keys.RESULT_CAST) != null ||
-                              receiver.getUserData(Keys.WIDENED_RECEIVER) != null;
+            widenedReceiver = isWidened(receiver);
             target = discardResultCast(receiver);
 
             if (target instanceof NullReferenceExpression) {
@@ -1218,7 +1224,8 @@ public class AstMethodBodyBuilder {
 
             invocation = target.invoke(
                 methodReference.getName(),
-                widened ? Collections.<AstType>emptyList() : convertTypeArguments(methodReference),
+                widened ? widenedTypeArguments(methodReference, adjustedArguments)
+                        : convertTypeArguments(methodReference),
                 adjustedArguments
             );
 
@@ -1228,7 +1235,7 @@ public class AstMethodBodyBuilder {
 
             if (widened) {
                 invocation.putUserData(Keys.MEMBER_REFERENCE, methodReference);
-                return eraseParameterizedResult(methodReference, invocation);
+                return eraseParameterizedResult(methodReference.resolve().getReturnType(), invocation);
             }
         }
 
@@ -1246,9 +1253,7 @@ public class AstMethodBodyBuilder {
      * it, and no cast of that result survives erasure: the raw type is compatible with what was
      * expected.
      */
-    private Expression eraseParameterizedResult(final MethodReference method, final InvocationExpression invocation) {
-        final TypeReference declared = method.resolve().getReturnType();
-
+    private Expression eraseParameterizedResult(final TypeReference declared, final Expression result) {
         TypeReference element = declared;
 
         while (element.isArray()) {
@@ -1260,26 +1265,51 @@ public class AstMethodBodyBuilder {
             element.containsGenericParameters() &&
             isAccessibleType(element)) {
 
-            final CastExpression cast = new CastExpression(_astBuilder.convertType(MetadataHelper.erase(declared)), invocation);
+            final CastExpression cast = new CastExpression(_astBuilder.convertType(MetadataHelper.erase(declared)), result);
             cast.putUserData(Keys.RESULT_CAST, true);
             return cast;
         }
 
-        return invocation;
+        return result;
+    }
+
+    /** Tells whether the type of an expression depends on a widened argument. */
+    private static boolean isWidened(final Expression expression) {
+        return expression.getUserData(Keys.RESULT_CAST) != null ||
+               expression.getUserData(Keys.WIDENED_RECEIVER) != null;
     }
 
     /**
-     * The type of a local storing a result which depends on a widened receiver, such as its iterator,
-     * was inferred before the widening.
+     * The type of a local storing a result which depends on a widened receiver, such as its iterator
+     * or an element of its array, was inferred before the widening.
      */
     private Expression eraseStoredResult(final Expression value) {
         if (value.getUserData(Keys.WIDENED_RECEIVER) == null) {
             return value;
         }
 
-        final MethodReference method = (MethodReference) value.getUserData(Keys.MEMBER_REFERENCE);
+        Expression source = value;
+        int depth = 0;
 
-        return method.resolve() != null ? eraseParameterizedResult(method, (InvocationExpression) value) : value;
+        while (source instanceof IndexerExpression) {
+            source = ((IndexerExpression) source).getTarget();
+            depth++;
+        }
+
+        final MethodReference method = (MethodReference) source.getUserData(Keys.MEMBER_REFERENCE);
+        final MethodDefinition definition = method != null ? method.resolve() : null;
+
+        if (definition == null) {
+            return value;
+        }
+
+        TypeReference declared = definition.getReturnType();
+
+        while (depth-- > 0 && declared.isArray()) {
+            declared = declared.getElementType();
+        }
+
+        return eraseParameterizedResult(declared, value);
     }
 
     /**
@@ -1299,9 +1329,12 @@ public class AstMethodBodyBuilder {
 
     @SuppressWarnings("UnusedParameters")
     private List<AstType> convertTypeArguments(final MethodReference methodReference) {
-        if (_context.getSettings().getForceExplicitTypeArguments() &&
-            methodReference instanceof IGenericInstance) {
+        return _context.getSettings().getForceExplicitTypeArguments() ? explicitTypeArguments(methodReference)
+                                                                     : Collections.<AstType>emptyList();
+    }
 
+    private List<AstType> explicitTypeArguments(final MethodReference methodReference) {
+        if (methodReference instanceof IGenericInstance) {
             final List<TypeReference> typeArguments = ((IGenericInstance) methodReference).getTypeArguments();
 
             if (!typeArguments.isEmpty()) {
@@ -1316,6 +1349,92 @@ public class AstMethodBodyBuilder {
         }
 
         return Collections.emptyList();
+    }
+
+    /**
+     * Returns the explicit type arguments of a call with widened arguments: the type variables of the
+     * widened parameters take the types of the casts, while the others are kept.  They are needed when
+     * forced, or when no argument lets the compiler infer one of them.
+     */
+    private List<AstType> widenedTypeArguments(final MethodReference method, final List<Expression> arguments) {
+        final MethodDefinition definition = method.resolve();
+        final List<GenericParameter> variables = definition.getGenericParameters();
+        final boolean needed = _context.getSettings().getForceExplicitTypeArguments() ||
+                               any(variables, v -> !isInferredFromArguments(v, definition));
+        final List<AstType> typeArguments = needed ? explicitTypeArguments(method)
+                                                   : Collections.<AstType>emptyList();
+
+        if (typeArguments.size() != variables.size()) {
+            return Collections.emptyList();
+        }
+
+        for (int i = 0; i < arguments.size(); i++) {
+            final TypeReference bound = arguments.get(i).getUserData(Keys.SELECTS_OVERLOAD);
+
+            if (bound == null) {
+                continue;
+            }
+
+            // An intersection of types cannot be written as a type argument.
+            if (bound instanceof ICompoundType) {
+                return Collections.emptyList();
+            }
+
+            TypeReference type = definition.getParameters().get(i).getParameterType();
+
+            while (type.isGenericParameter()) {
+                final String name = type.getSimpleName();
+
+                for (int j = 0; j < variables.size(); j++) {
+                    if (variables.get(j).getSimpleName().equals(name)) {
+                        typeArguments.set(j, _astBuilder.convertType(bound));
+                    }
+                }
+
+                if (!((GenericParameter) type).hasExtendsBound()) {
+                    break;
+                }
+
+                type = ((GenericParameter) type).getExtendsBound();
+
+                // The erasure of a parameterized bound is not within that bound.
+                if (type instanceof IGenericInstance) {
+                    return Collections.emptyList();
+                }
+            }
+        }
+
+        return typeArguments;
+    }
+
+    private static boolean isInferredFromArguments(final GenericParameter variable, final MethodDefinition method) {
+        final String name = variable.getSimpleName();
+
+        return any(method.getParameters(), p -> mentions(p.getParameterType(), name));
+    }
+
+    /** Tells whether a type mentions a type variable, directly or as a bound of another one. */
+    private static boolean mentions(final TypeReference type, final String name) {
+        if (type.isGenericParameter()) {
+            final GenericParameter parameter = (GenericParameter) type;
+
+            return parameter.getSimpleName().equals(name) ||
+                   parameter.hasExtendsBound() &&
+                   parameter.getExtendsBound().isGenericParameter() &&
+                   mentions(parameter.getExtendsBound(), name);
+        }
+
+        if (type.isArray()) {
+            return mentions(type.getElementType(), name);
+        }
+
+        if (type.isWildcardType()) {
+            return type.hasSuperBound() ? mentions(type.getSuperBound(), name)
+                                        : type.hasExtendsBound() && mentions(type.getExtendsBound(), name);
+        }
+
+        return type instanceof IGenericInstance &&
+               any(((IGenericInstance) type).getTypeArguments(), argument -> mentions(argument, name));
     }
 
     @SuppressWarnings("UnusedParameters")
@@ -1425,7 +1544,7 @@ public class AstMethodBodyBuilder {
                 final ConvertTypeOptions boundOptions = new ConvertTypeOptions();
                 boundOptions.setIncludeIntersectionTypes(true);
                 final CastExpression cast = new CastExpression(_astBuilder.convertType(boundType, boundOptions), argument);
-                cast.putUserData(Keys.SELECTS_OVERLOAD, true);
+                cast.putUserData(Keys.SELECTS_OVERLOAD, boundType);
                 arguments.set(i, cast);
             }
             else if (isCastRequired(pType, aType, true) &&
@@ -1743,7 +1862,7 @@ public class AstMethodBodyBuilder {
 
             if (variables.get(i).getSimpleName().equals(variable.getSimpleName()) &&
                 !argument.isWildcardType() &&
-                (!argument.isGenericParameter() || isClassTypeVariableInScope((GenericParameter) argument))) {
+                (!argument.isGenericParameter() || isTypeVariableInScope((GenericParameter) argument))) {
 
                 return argument;
             }
@@ -1794,6 +1913,15 @@ public class AstMethodBodyBuilder {
         }
 
         return null;
+    }
+
+    private boolean isTypeVariableInScope(final GenericParameter variable) {
+        final GenericParameter inScope = _context.getCurrentMethod().findTypeVariable(variable.getSimpleName());
+
+        return isClassTypeVariableInScope(variable) ||
+               inScope != null &&
+               inScope.getOwner() instanceof IMethodSignature &&
+               variable.getOwner() instanceof IMethodSignature;
     }
 
     private boolean isClassTypeVariableInScope(final GenericParameter variable) {

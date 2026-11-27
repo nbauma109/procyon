@@ -40,7 +40,7 @@ public final class Keys {
     public final static Key<TypeReference> TYPE_REFERENCE = Key.create("TypeReference");
     public final static Key<TypeReference> ANONYMOUS_BASE_TYPE_REFERENCE = Key.create("AnonymousBaseTypeReference");
     /** Marks a cast without which an invocation would select another method. */
-    public final static Key<Boolean> SELECTS_OVERLOAD = Key.create("SelectsOverload");
+    public final static Key<TypeReference> SELECTS_OVERLOAD = Key.create("SelectsOverload");
     /** Marks a cast added to the result of an invocation. */
     public final static Key<Boolean> RESULT_CAST = Key.create("ResultCast");
     /** Marks an invocation whose receiver has other type arguments than those it was inferred with. */
