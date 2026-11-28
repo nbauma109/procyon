@@ -465,6 +465,16 @@ public class GenericsTests extends DecompilerTest {
                 "        Both4<Numbered, Object, java.io.IOException> k = (Both4<Numbered, Object, java.io.IOException>) (Both4) both4((Both4<?, ?, ?>) t);",
                 "        return k::act;",
                 "    }",
+                "    static class Deep implements Comparable<java.util.List<Object>> { public int compareTo(java.util.List<Object> o) { return 0; } }",
+                "    static class Deeper<X extends Comparable<java.util.List<Y>>, Y, E extends Exception> { void act(X x, Y y) throws E { } }",
+                "    static class Deepest extends Deeper<Deep, Object, java.io.IOException> { }",
+                "    <T extends Deeper<?, ?, ?>> T deeper(T t) { return t; }",
+                "    Deepest deeper(Deepest t) { return t; }",
+                "    interface Dive { void run(Deep c, Integer n) throws java.io.IOException; }",
+                "    Dive dive(Deepest t) {",
+                "        Deeper<Deep, Object, java.io.IOException> k = (Deeper<Deep, Object, java.io.IOException>) (Deeper) deeper((Deeper<?, ?, ?>) t);",
+                "        return k::act;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -929,6 +939,15 @@ public class GenericsTests extends DecompilerTest {
             "    Num num(final Bothing bothing) {\n" +
             "        return ((Both4<Numbered, Object, IOException>)(Both4)this.both4((Both4)bothing))::act;\n" +
             "    }\n" +
+            "    <T extends Deeper<?, ?, ?>> T deeper(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Deepest deeper(final Deepest deepest) {\n" +
+            "        return deepest;\n" +
+            "    }\n" +
+            "    Dive dive(final Deepest deepest) {\n" +
+            "        return ((Deeper<Deep, Object, IOException>)(Deeper)this.deeper((Deeper)deepest))::act;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -957,6 +976,21 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    interface Dive {\n" +
+            "        void run(final Deep p0, final Integer p1) throws IOException;\n" +
+            "    }\n" +
+            "    static class Deep implements Comparable<List<Object>> {\n" +
+            "        @Override\n" +
+            "        public int compareTo(final List<Object> list) {\n" +
+            "            return 0;\n" +
+            "        }\n" +
+            "    }\n" +
+            "    static class Deepest extends Deeper<Deep, Object, IOException> {\n" +
+            "    }\n" +
+            "    static class Deeper<X extends Comparable<List<Y>>, Y, E extends Exception> {\n" +
+            "        void act(final X x, final Y y) throws E, Exception {\n" +
+            "        }\n" +
             "    }\n" +
             "    interface Num {\n" +
             "        void run(final Numbered p0, final Integer p1) throws IOException;\n" +
@@ -2285,6 +2319,13 @@ public class GenericsTests extends DecompilerTest {
             "    void classes(final Integer e, final List<Set<String>[]> a, final List<String> b) {\n" +
             "        this.classed(e, a, b);\n" +
             "    }\n" +
+            "    <E extends Number> void lower(final E e, final List<int[]> a, final List<Integer> b) {\n" +
+            "    }\n" +
+            "    <N> void lower(final Integer e, final Collection<? super N[]> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    void lowered(final Integer e, final List<int[]> a, final List<Integer> b) {\n" +
+            "        this.lower(e, a, b);\n" +
+            "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
             "    <N> void add(final Integer e, final Collection<N> list, final N n) {\n" +
@@ -2494,6 +2535,16 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void both2(final Boxed2 boxed, final String s) {\n" +
             "        ((Box2<String>)(Box2)this.box2((Box2)boxed)).pass(s, String.class, v -> print(v.length()));\n" +
+            "    }\n" +
+            "    <T extends Shade<?>> T shade(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Shaded3 shade(final Shaded3 shaded) {\n" +
+            "        return shaded;\n" +
+            "    }\n" +
+            "    void shadowed(final Shaded3 shaded, final IOException e) throws IOException {\n" +
+            "        ((Shade<?>)this.shade((Shade)shaded)).act(e);\n" +
+            "        ((Shade<?>)this.shade((Shade)shaded)).visit(s -> print(s.length()));\n" +
             "    }\n" +
             "    void caught(final Risk risk) {\n" +
             "        try {\n" +
@@ -3737,6 +3788,16 @@ class Shared {
         this.classed(e, a, b);
     }
 
+    <E extends Number> void lower(final E e, final List<int[]> a, final List<Integer> b) {
+    }
+
+    <N> void lower(final Integer e, final Collection<? super N[]> a, final Collection<N> b) {
+    }
+
+    void lowered(final Integer e, final List<int[]> a, final List<Integer> b) {
+        this.lower(e, a, b);
+    }
+
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {
     }
 
@@ -3994,6 +4055,19 @@ class Writes {
         ((Box2<String>) (Box2) this.box2((Box2<?>) boxed)).pass(s, String.class, v -> print(v.length()));
     }
 
+    <T extends Shade<?>> T shade(final T t) {
+        return t;
+    }
+
+    Shaded3 shade(final Shaded3 shaded) {
+        return shaded;
+    }
+
+    void shadowed(final Shaded3 shaded, final IOException e) throws IOException {
+        this.shade((Shade<?>) shaded).act(e);
+        this.shade((Shade<?>) shaded).visit(s -> print(s.length()));
+    }
+
     void caught(final Risk risk) {
         try {
             ((Hazard<IOException>) (Hazard) this.hazard((Hazard<?>) risk)).act();
@@ -4047,6 +4121,17 @@ abstract class Box2<X> {
 
 @SuppressWarnings("unused") // decompiler fixture
 abstract class Boxed2 extends Box2<String> {
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+abstract class Shade<E extends SQLException> {
+    abstract <E extends Exception> void act(E e) throws E;
+
+    abstract <F extends Consumer<String>> void visit(F f);
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+abstract class Shaded3 extends Shade<SQLException> {
 }
 
 @SuppressWarnings("unused") // decompiler fixture

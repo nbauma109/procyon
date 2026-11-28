@@ -2374,11 +2374,15 @@ public class AstMethodBodyBuilder {
         final List<TypeReference> sources = ((IGenericInstance) viewed).getTypeArguments();
 
         for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
-            if (targets.get(i).isGenericParameter() &&
-                !sources.get(i).isWildcardType() &&
-                !sources.get(i).isGenericParameter()) {
+            if (sources.get(i).isWildcardType() || sources.get(i).isGenericParameter()) {
+                continue;
+            }
 
+            if (targets.get(i).isGenericParameter()) {
                 arguments.put(targets.get(i).getSimpleName(), sources.get(i));
+            }
+            else {
+                fixBoundArguments(arguments, targets.get(i), sources.get(i));
             }
         }
     }
@@ -2541,7 +2545,7 @@ public class AstMethodBodyBuilder {
         final List<GenericParameter> variables = new ArrayList<>();
 
         if (definition != null) {
-            for (final GenericParameter variable : definition.getDeclaringType().getGenericParameters()) {
+            for (final GenericParameter variable : classVariables(definition)) {
                 if (any(definition.getThrownTypes(), t -> t.isGenericParameter() &&
                                                           t.getSimpleName().equals(variable.getSimpleName()))) {
 
@@ -3009,7 +3013,7 @@ public class AstMethodBodyBuilder {
     private static List<String> classVariableNames(final MethodReference method) {
         final List<String> names = new ArrayList<>();
 
-        for (final GenericParameter variable : method.resolve().getDeclaringType().getGenericParameters()) {
+        for (final GenericParameter variable : classVariables(method.resolve())) {
             names.add(variable.getSimpleName());
         }
 
@@ -3026,12 +3030,24 @@ public class AstMethodBodyBuilder {
     }
 
     private static boolean isGenericFunction(final TypeReference type, final MethodDefinition method) {
+        // A variable of the method may be bounded by the function.
+        if (type.isGenericParameter() &&
+            any(method.getGenericParameters(),
+                variable -> variable.getSimpleName().equals(type.getSimpleName())) &&
+            ((GenericParameter) type).hasExtendsBound()) {
+
+            return any(typesOf(((GenericParameter) type).getExtendsBound()),
+                       bound -> bound instanceof IGenericInstance && isFunctionalInterface(bound.resolve()));
+        }
+
         final TypeDefinition definition = type instanceof IGenericInstance ? type.resolve() : null;
 
-        return definition != null &&
-               definition.isInterface() &&
-               descriptorOf(definition) != null &&
+        return isFunctionalInterface(definition) &&
                any(method.getGenericParameters(), variable -> mentions(type, variable.getSimpleName()));
+    }
+
+    private static boolean isFunctionalInterface(final TypeDefinition type) {
+        return type != null && type.isInterface() && descriptorOf(type) != null;
     }
 
     /** Casts a receiver to its class with unknown type arguments. */
@@ -3075,10 +3091,25 @@ public class AstMethodBodyBuilder {
 
         return definition != null &&
                any(
-                   definition.getDeclaringType().getGenericParameters(),
+                   classVariables(definition),
                    variable -> any(definition.getParameters(),
                                    p -> mentions(p.getParameterType(), variable.getSimpleName()))
                );
+    }
+
+    /** Returns the type variables of the class of a method which its own ones do not shadow. */
+    private static List<GenericParameter> classVariables(final MethodDefinition method) {
+        final List<GenericParameter> variables = new ArrayList<>();
+
+        for (final GenericParameter variable : method.getDeclaringType().getGenericParameters()) {
+            if (!any(method.getGenericParameters(),
+                     own -> own.getSimpleName().equals(variable.getSimpleName()))) {
+
+                variables.add(variable);
+            }
+        }
+
+        return variables;
     }
 
     /** Tells whether the type of a field depends on the type variables of its class. */
@@ -4136,8 +4167,8 @@ public class AstMethodBodyBuilder {
                         return false;
                     }
 
-                    // No reference type has primitive elements for its subtypes.
-                    if (passed != null && passed.isPrimitive() && element.isGenericParameter() && !target.hasSuperBound()) {
+                    // No array of a reference type is a subtype or a supertype of an array of primitives.
+                    if (passed != null && passed.isPrimitive() && element.isGenericParameter()) {
                         return false;
                     }
 
