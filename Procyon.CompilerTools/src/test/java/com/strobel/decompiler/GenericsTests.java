@@ -10,6 +10,7 @@ import java.util.function.Supplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.Optional;
+import java.util.Set;
 import java.util.Collections;
 import java.util.Collection;
 import java.util.stream.Collectors;
@@ -358,6 +359,26 @@ public class GenericsTests extends DecompilerTest {
                 "    Narrow narrow(Resulting t) {",
                 "        Results<String, java.io.IOException> w = (Results<String, java.io.IOException>) (Results) results((Results<?, ?>) t);",
                 "        return (Narrow) w::get;",
+                "    }",
+                "    static class Wrapping<X, E extends Exception> { java.util.List<X> get(X x) throws E { return null; } }",
+                "    static class Wrapper extends Wrapping<CharSequence, java.io.IOException> { }",
+                "    <T extends Wrapping<?, ?>> T wrapping(T t) { return t; }",
+                "    Wrapper wrapping(Wrapper t) { return t; }",
+                "    interface Exact { java.util.List<CharSequence> run(String s) throws java.io.IOException; }",
+                "    Exact exact(Wrapper t) {",
+                "        Wrapping<CharSequence, java.io.IOException> w = (Wrapping<CharSequence, java.io.IOException>) (Wrapping) wrapping((Wrapping<?, ?>) t);",
+                "        return w::get;",
+                "    }",
+                "    static class Takes2<X, E extends Exception> { void put(X x) throws E { } }",
+                "    static class Taken extends Takes2<String, java.io.IOException> { }",
+                "    <T extends Takes2<?, ?>> T takes2(T t) { return t; }",
+                "    Taken takes2(Taken t) { return t; }",
+                "    void putEarly(Taken t, String s, int n) throws java.io.IOException {",
+                "        Takes2<String, java.io.IOException> b = new Taken();",
+                "        while (n-- > 0) {",
+                "            b.put(s);",
+                "            b = (Takes2<String, java.io.IOException>) (Takes2) takes2((Takes2<?, ?>) t);",
+                "        }",
                 "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
@@ -718,6 +739,28 @@ public class GenericsTests extends DecompilerTest {
             "    Narrow narrow(final Resulting resulting) {\n" +
             "        return ((Results<String, IOException>)(Results)this.results((Results)resulting))::get;\n" +
             "    }\n" +
+            "    <T extends Wrapping<?, ?>> T wrapping(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Wrapper wrapping(final Wrapper wrapper) {\n" +
+            "        return wrapper;\n" +
+            "    }\n" +
+            "    Exact exact(final Wrapper wrapper) {\n" +
+            "        return ((Wrapping<CharSequence, IOException>)(Wrapping)this.wrapping((Wrapping)wrapper))::get;\n" +
+            "    }\n" +
+            "    <T extends Takes2<?, ?>> T takes2(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Taken takes2(final Taken taken) {\n" +
+            "        return taken;\n" +
+            "    }\n" +
+            "    void putEarly(final Taken taken, final String s, int n) throws IOException {\n" +
+            "        Takes2 takes2 = new Taken();\n" +
+            "        while (n-- > 0) {\n" +
+            "            ((Takes2<String, IOException>)(Takes2)takes2).put(s);\n" +
+            "            takes2 = this.takes2((Takes2)taken);\n" +
+            "        }\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -746,6 +789,22 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    static class Taken extends Takes2<String, IOException> {\n" +
+            "    }\n" +
+            "    static class Takes2<X, E extends Exception> {\n" +
+            "        void put(final X x) throws E, Exception {\n" +
+            "        }\n" +
+            "    }\n" +
+            "    interface Exact {\n" +
+            "        List<CharSequence> run(final String p0) throws IOException;\n" +
+            "    }\n" +
+            "    static class Wrapper extends Wrapping<CharSequence, IOException> {\n" +
+            "    }\n" +
+            "    static class Wrapping<X, E extends Exception> {\n" +
+            "        List<X> get(final X x) throws E, Exception {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    interface Narrow {\n" +
             "        List<? extends String> run() throws IOException;\n" +
@@ -1892,6 +1951,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void paired(final Integer e, final String a, final Integer b) {\n" +
             "        this.pairs(e, a, b);\n" +
+            "    }\n" +
+            "    <E extends Number> void shape(final E e, final List<Set<String>> a, final List<Integer> b) {\n" +
+            "    }\n" +
+            "    <N> void shape(final Integer e, final Collection<? extends List<N>> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    void shaped(final Integer e, final List<Set<String>> a, final List<Integer> b) {\n" +
+            "        this.shape(e, a, b);\n" +
             "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
@@ -3236,6 +3302,16 @@ class Shared {
 
     void paired(final Integer e, final String a, final Integer b) {
         this.pairs(e, a, b);
+    }
+
+    <E extends Number> void shape(final E e, final List<Set<String>> a, final List<Integer> b) {
+    }
+
+    <N> void shape(final Integer e, final Collection<? extends List<N>> a, final Collection<N> b) {
+    }
+
+    void shaped(final Integer e, final List<Set<String>> a, final List<Integer> b) {
+        this.shape(e, a, b);
     }
 
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {

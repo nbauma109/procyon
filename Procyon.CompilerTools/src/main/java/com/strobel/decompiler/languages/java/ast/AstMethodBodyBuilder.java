@@ -289,44 +289,51 @@ public class AstMethodBodyBuilder {
             return;
         }
 
-        if (takesClassTypeVariables((MethodReference) member)) {
+        // Only a receiver left raw needs its arguments cast to erasures.
+        if (!specializeEarlierReceiver(invocation, (MethodReference) member) &&
+            takesClassTypeVariables((MethodReference) member)) {
+
             final List<Expression> arguments = new ArrayList<>(invocation.getArguments());
 
             invocation.getArguments().clear();
             keepMemberSelection((MethodReference) member, arguments);
             invocation.getArguments().addAll(arguments);
         }
-
-        specializeEarlierReceiver(invocation, (MethodReference) member);
     }
 
     /** Specializes the receiver of an earlier invocation which would otherwise throw a bound. */
-    private void specializeEarlierReceiver(final InvocationExpression invocation, final MethodReference method) {
+    private boolean specializeEarlierReceiver(final InvocationExpression invocation, final MethodReference method) {
         final Expression access = invocation.getTarget();
 
         if (!(access instanceof MemberReferenceExpression)) {
-            return;
+            return false;
         }
 
         final Expression receiver = ((MemberReferenceExpression) access).getTarget();
         final Map<String, TypeReference> thrown = thrownTypeArguments(method, receiver.getOffset());
 
         if (thrown.isEmpty()) {
-            return;
+            return false;
         }
 
+        final Map<String, TypeReference> typeArguments =
+            argumentTypeArguments(method, new ArrayList<>(invocation.getArguments()));
+
+        addThrownTypeArguments(typeArguments, thrown);
         receiver.remove();
 
         final Expression specialized = specializedReceiver(
             receiver,
             method.getDeclaringType(),
-            thrown,
+            typeArguments,
             thrown.keySet().iterator().next()
         );
 
         ((MemberReferenceExpression) access).setTarget(
             specialized != receiver ? new ParenthesizedExpression(specialized) : receiver
         );
+
+        return specialized != receiver;
     }
 
     /**
@@ -1925,7 +1932,49 @@ public class AstMethodBodyBuilder {
             arguments.putIfAbsent(entry.getKey(), entry.getValue());
         }
 
+        // A type argument of the result admits no other type, whatever the parameters would accept.
+        if (result != null) {
+            addExactTypeArguments(arguments, definition.getReturnType(), result);
+        }
+
         return arguments;
+    }
+
+    private void addExactTypeArguments(
+        final Map<String, TypeReference> arguments,
+        final TypeReference declared,
+        final TypeReference actual) {
+
+        if (declared.isArray() && actual.isArray()) {
+            addExactTypeArguments(arguments, declared.getElementType(), actual.getElementType());
+            return;
+        }
+
+        final TypeDefinition definition = declared instanceof IGenericInstance ? declared.resolve() : null;
+        final TypeReference viewed = definition != null ? MetadataHelper.asSuper(definition, actual) : null;
+
+        if (!(viewed instanceof IGenericInstance)) {
+            return;
+        }
+
+        final List<TypeReference> targets = ((IGenericInstance) declared).getTypeArguments();
+        final List<TypeReference> sources = ((IGenericInstance) viewed).getTypeArguments();
+
+        for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
+            final TypeReference target = targets.get(i);
+            final TypeReference source = sources.get(i);
+
+            if (source.isWildcardType() || isOutOfScope(source)) {
+                continue;
+            }
+
+            if (target.isGenericParameter()) {
+                arguments.put(target.getSimpleName(), source);
+            }
+            else {
+                addExactTypeArguments(arguments, target, source);
+            }
+        }
     }
 
     /**
@@ -3816,6 +3865,11 @@ public class AstMethodBodyBuilder {
                     final TypeReference asBound = passed != null && definition != null
                                                   ? MetadataHelper.asSuper(definition, passed)
                                                   : null;
+
+                    // What is passed must at least be a subtype of the class of an upper bound.
+                    if (asBound == null && passed != null && !target.hasSuperBound()) {
+                        return false;
+                    }
 
                     if (asBound instanceof IGenericInstance &&
                         !bind((IGenericInstance) bound, (IGenericInstance) asBound, bindings, wildcards)) {
