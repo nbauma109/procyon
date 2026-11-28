@@ -289,15 +289,28 @@ public class AstMethodBodyBuilder {
             return;
         }
 
-        // Only a receiver left raw needs its arguments cast to erasures.
-        if (!specializeEarlierReceiver(invocation, (MethodReference) member) &&
-            takesClassTypeVariables((MethodReference) member)) {
+        if (specializeEarlierReceiver(invocation, (MethodReference) member)) {
+            return;
+        }
 
+        // Only a receiver left raw needs its arguments cast to erasures.
+        if (takesClassTypeVariables((MethodReference) member)) {
             final List<Expression> arguments = new ArrayList<>(invocation.getArguments());
 
             invocation.getArguments().clear();
             keepMemberSelection((MethodReference) member, arguments);
             invocation.getArguments().addAll(arguments);
+        }
+        else if (invocation.getTarget() instanceof MemberReferenceExpression &&
+                 (throwsOwnVariable((MethodReference) member) || takesGenericFunction((MethodReference) member))) {
+
+            final MemberReferenceExpression access = (MemberReferenceExpression) invocation.getTarget();
+            final Expression receiver = access.getTarget();
+
+            receiver.remove();
+            access.setTarget(new ParenthesizedExpression(
+                wildcardReceiver(receiver, ((MethodReference) member).getDeclaringType())
+            ));
         }
     }
 
@@ -2269,17 +2282,20 @@ public class AstMethodBodyBuilder {
 
         final Map<String, TypeReference> reconciled = new HashMap<>(arguments);
 
-        for (final GenericParameter variable : definition.getGenericParameters()) {
-            if (!variable.hasExtendsBound() || !variable.getExtendsBound().isGenericParameter()) {
-                continue;
-            }
+        // Widening a bound may in turn require its own bound to be widened, along a chain of any order.
+        for (int pass = 0; pass < definition.getGenericParameters().size(); pass++) {
+            for (final GenericParameter variable : definition.getGenericParameters()) {
+                if (!variable.hasExtendsBound() || !variable.getExtendsBound().isGenericParameter()) {
+                    continue;
+                }
 
-            final String bound = variable.getExtendsBound().getSimpleName();
-            final TypeReference lower = reconciled.get(variable.getSimpleName());
-            final TypeReference upper = reconciled.get(bound);
+                final String bound = variable.getExtendsBound().getSimpleName();
+                final TypeReference lower = reconciled.get(variable.getSimpleName());
+                final TypeReference upper = reconciled.get(bound);
 
-            if (lower != null && upper != null) {
-                reconciled.put(bound, commonType(upper, lower));
+                if (lower != null && upper != null) {
+                    reconciled.put(bound, commonType(upper, lower));
+                }
             }
         }
 
@@ -4106,7 +4122,12 @@ public class AstMethodBodyBuilder {
                 argumentElement = argumentElement.getElementType();
             }
 
-            if (element.isGenericParameter() && !argumentElement.isPrimitive()) {
+            // A type variable never stands for a primitive type, even as the element of an array.
+            if (element.isGenericParameter() && argumentElement.isPrimitive()) {
+                return false;
+            }
+
+            if (element.isGenericParameter()) {
                 final TypeReference bound = bindings.putIfAbsent(element.getSimpleName(), argumentElement);
 
                 if (bound != null && !MetadataHelper.isSameType(bound, argumentElement)) {

@@ -414,6 +414,26 @@ public class GenericsTests extends DecompilerTest {
                 "        Acted<String, java.io.IOException> m = (Acted<String, java.io.IOException>) (Acted) acted((Acted<?, ?>) t);",
                 "        return m::act;",
                 "    }",
+                "    static class Chain<Z, Y extends Z, X extends Y, E extends Exception> { void act(X x, Y y, Z z) throws E { } }",
+                "    static class Chained extends Chain<Object, Object, Object, java.io.IOException> { }",
+                "    <T extends Chain<?, ?, ?, ?>> T chain(T t) { return t; }",
+                "    Chained chain(Chained t) { return t; }",
+                "    interface Links { void run(String s, Integer n, Long l) throws java.io.IOException; }",
+                "    Links links(Chained t) {",
+                "        Chain<Object, Object, Object, java.io.IOException> k = (Chain<Object, Object, Object, java.io.IOException>) (Chain) chain((Chain<?, ?, ?, ?>) t);",
+                "        return k::act;",
+                "    }",
+                "    static class Own<X> { <E extends Exception> void act(E e) throws E { } }",
+                "    static class Owned extends Own<String> { }",
+                "    <T extends Own<?>> T own(T t) { return t; }",
+                "    Owned own(Owned t) { return t; }",
+                "    void looping(Owned t, java.io.IOException e, int n) throws java.io.IOException {",
+                "        Own<String> b = new Owned();",
+                "        while (n-- > 0) {",
+                "            b.act(e);",
+                "            b = (Own<String>) (Own) own((Own<?>) t);",
+                "        }",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -825,6 +845,28 @@ public class GenericsTests extends DecompilerTest {
             "    Merged3 merged3(final Acting2 acting2) {\n" +
             "        return ((Acted<String, IOException>)(Acted)this.acted((Acted)acting2))::act;\n" +
             "    }\n" +
+            "    <T extends Chain<?, ?, ?, ?>> T chain(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Chained chain(final Chained chained) {\n" +
+            "        return chained;\n" +
+            "    }\n" +
+            "    Links links(final Chained chained) {\n" +
+            "        return ((Chain<Serializable, Serializable, String, IOException>)(Chain)this.chain((Chain)chained))::act;\n" +
+            "    }\n" +
+            "    <T extends Own<?>> T own(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Owned own(final Owned owned) {\n" +
+            "        return owned;\n" +
+            "    }\n" +
+            "    void looping(final Owned owned, final IOException ex, int n) throws IOException {\n" +
+            "        Own own = new Owned();\n" +
+            "        while (n-- > 0) {\n" +
+            "            ((Own<?>)own).act(ex);\n" +
+            "            own = this.own((Own)owned);\n" +
+            "        }\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -853,6 +895,21 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    static class Owned extends Own<String> {\n" +
+            "    }\n" +
+            "    static class Own<X> {\n" +
+            "        <E extends Exception> void act(final E e) throws E, Exception {\n" +
+            "        }\n" +
+            "    }\n" +
+            "    interface Links {\n" +
+            "        void run(final String p0, final Integer p1, final Long p2) throws IOException;\n" +
+            "    }\n" +
+            "    static class Chained extends Chain<Object, Object, Object, IOException> {\n" +
+            "    }\n" +
+            "    static class Chain<Z, Y extends Z, X extends Y, E extends Exception> {\n" +
+            "        void act(final X x, final Y y, final Z b) throws E, Exception {\n" +
+            "        }\n" +
             "    }\n" +
             "    static class Acting2 extends Acted<String, IOException> {\n" +
             "    }\n" +
@@ -2092,6 +2149,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void nestedly(final Integer e, final List<? extends List<String>> a, final List<Integer> b) {\n" +
             "        this.nestedCapture(e, a, b);\n" +
+            "    }\n" +
+            "    <E extends Number> void exact(final E e, final List<int[]> a, final List<Integer> b) {\n" +
+            "    }\n" +
+            "    <N> void exact(final Integer e, final Collection<N[]> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    void exactly(final Integer e, final List<int[]> a, final List<Integer> b) {\n" +
+            "        this.exact(e, a, b);\n" +
             "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
@@ -3510,6 +3574,16 @@ class Shared {
 
     void nestedly(final Integer e, final List<? extends List<String>> a, final List<Integer> b) {
         this.nestedCapture(e, a, b);
+    }
+
+    <E extends Number> void exact(final E e, final List<int[]> a, final List<Integer> b) {
+    }
+
+    <N> void exact(final Integer e, final Collection<N[]> a, final Collection<N> b) {
+    }
+
+    void exactly(final Integer e, final List<int[]> a, final List<Integer> b) {
+        this.exact(e, a, b);
     }
 
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {
