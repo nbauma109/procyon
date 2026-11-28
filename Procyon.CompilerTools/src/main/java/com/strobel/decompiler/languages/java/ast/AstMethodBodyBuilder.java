@@ -1388,8 +1388,11 @@ public class AstMethodBodyBuilder {
                                 : Collections.<String, TypeReference>emptyMap();
             final boolean takesVariables = widenedReceiver && takesClassTypeVariables(methodReference);
 
-            if (takesVariables && thrown.isEmpty() && throwsOwnVariable(methodReference)) {
-                // A raw receiver would erase what the method throws, so the arguments specialize it.
+            if (takesVariables && thrown.isEmpty() &&
+                (throwsOwnVariable(methodReference) || takesGenericFunction(methodReference))) {
+
+                // A raw receiver would erase what the method throws and the types of its lambdas, so the
+                // arguments specialize it.
                 final Map<String, TypeReference> typeArguments = argumentTypeArguments(methodReference, arguments);
                 final Expression discarded = discardResultCast(receiver);
 
@@ -2281,6 +2284,35 @@ public class AstMethodBodyBuilder {
         final Map<String, TypeReference> arguments) {
 
         final Map<String, TypeReference> reconciled = new HashMap<>(arguments);
+
+        // A parameterized bound fixes the arguments of the variables which it names.
+        for (final GenericParameter variable : definition.getGenericParameters()) {
+            final TypeReference bound = variable.hasExtendsBound() ? variable.getExtendsBound() : null;
+            final TypeDefinition boundType = bound instanceof IGenericInstance ? bound.resolve() : null;
+            final TypeReference argument = reconciled.get(variable.getSimpleName());
+
+            if (boundType == null || argument == null || argument.isWildcardType()) {
+                continue;
+            }
+
+            final TypeReference viewed = MetadataHelper.asSuper(boundType, argument);
+
+            if (!(viewed instanceof IGenericInstance)) {
+                continue;
+            }
+
+            final List<TypeReference> targets = ((IGenericInstance) bound).getTypeArguments();
+            final List<TypeReference> sources = ((IGenericInstance) viewed).getTypeArguments();
+
+            for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
+                if (targets.get(i).isGenericParameter() &&
+                    !sources.get(i).isWildcardType() &&
+                    !sources.get(i).isGenericParameter()) {
+
+                    reconciled.put(targets.get(i).getSimpleName(), sources.get(i));
+                }
+            }
+        }
 
         // Widening a bound may in turn require its own bound to be widened, along a chain of any order.
         for (int pass = 0; pass < definition.getGenericParameters().size(); pass++) {
@@ -4120,6 +4152,11 @@ public class AstMethodBodyBuilder {
             while (element.isArray() && argumentElement.isArray()) {
                 element = element.getElementType();
                 argumentElement = argumentElement.getElementType();
+            }
+
+            // An array type accepts nothing with fewer dimensions.
+            if (element.isArray()) {
+                return false;
             }
 
             // A type variable never stands for a primitive type, even as the element of an array.

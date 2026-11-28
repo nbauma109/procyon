@@ -434,6 +434,16 @@ public class GenericsTests extends DecompilerTest {
                 "            b = (Own<String>) (Own) own((Own<?>) t);",
                 "        }",
                 "    }",
+                "    static class Compared implements Comparable<Object> { public int compareTo(Object o) { return 0; } }",
+                "    static class Pegged<X extends Comparable<Y>, Y, E extends Exception> { void act(X x, Y y) throws E { } }",
+                "    static class Pegging extends Pegged<Compared, Object, java.io.IOException> { }",
+                "    <T extends Pegged<?, ?, ?>> T pegged(T t) { return t; }",
+                "    Pegging pegged(Pegging t) { return t; }",
+                "    interface Peg { void run(Compared c, Integer n) throws java.io.IOException; }",
+                "    Peg peg(Pegging t) {",
+                "        Pegged<Compared, Object, java.io.IOException> k = (Pegged<Compared, Object, java.io.IOException>) (Pegged) pegged((Pegged<?, ?, ?>) t);",
+                "        return k::act;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -867,6 +877,15 @@ public class GenericsTests extends DecompilerTest {
             "            own = this.own((Own)owned);\n" +
             "        }\n" +
             "    }\n" +
+            "    <T extends Pegged<?, ?, ?>> T pegged(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Pegging pegged(final Pegging pegging) {\n" +
+            "        return pegging;\n" +
+            "    }\n" +
+            "    Peg peg(final Pegging pegging) {\n" +
+            "        return ((Pegged<Compared, Object, IOException>)(Pegged)this.pegged((Pegged)pegging))::act;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -895,6 +914,21 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    interface Peg {\n" +
+            "        void run(final Compared p0, final Integer p1) throws IOException;\n" +
+            "    }\n" +
+            "    static class Compared implements Comparable<Object> {\n" +
+            "        @Override\n" +
+            "        public int compareTo(final Object o) {\n" +
+            "            return 0;\n" +
+            "        }\n" +
+            "    }\n" +
+            "    static class Pegging extends Pegged<Compared, Object, IOException> {\n" +
+            "    }\n" +
+            "    static class Pegged<X extends Comparable<Y>, Y, E extends Exception> {\n" +
+            "        void act(final X x, final Y y) throws E, Exception {\n" +
+            "        }\n" +
             "    }\n" +
             "    static class Owned extends Own<String> {\n" +
             "    }\n" +
@@ -2157,6 +2191,13 @@ public class GenericsTests extends DecompilerTest {
             "    void exactly(final Integer e, final List<int[]> a, final List<Integer> b) {\n" +
             "        this.exact(e, a, b);\n" +
             "    }\n" +
+            "    <E extends Number> void thin(final E e, final List<String> a, final List<Integer> b) {\n" +
+            "    }\n" +
+            "    <N> void thin(final Integer e, final Collection<N[]> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    void thinly(final Integer e, final List<String> a, final List<Integer> b) {\n" +
+            "        this.thin(e, a, b);\n" +
+            "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
             "    <N> void add(final Integer e, final Collection<N> list, final N n) {\n" +
@@ -2363,6 +2404,9 @@ public class GenericsTests extends DecompilerTest {
             "        ((Box2<?>)this.box2((Box2)boxed)).visit(String.class, s -> print(s.length()));\n" +
             "    }\n" +
             "    static void print(final int length) {\n" +
+            "    }\n" +
+            "    void both2(final Boxed2 boxed, final String s) {\n" +
+            "        ((Box2<String>)(Box2)this.box2((Box2)boxed)).pass(s, String.class, v -> print(v.length()));\n" +
             "    }\n" +
             "    void caught(final Risk risk) {\n" +
             "        try {\n" +
@@ -3586,6 +3630,16 @@ class Shared {
         this.exact(e, a, b);
     }
 
+    <E extends Number> void thin(final E e, final List<String> a, final List<Integer> b) {
+    }
+
+    <N> void thin(final Integer e, final Collection<N[]> a, final Collection<N> b) {
+    }
+
+    void thinly(final Integer e, final List<String> a, final List<Integer> b) {
+        this.thin(e, a, b);
+    }
+
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {
     }
 
@@ -3839,6 +3893,10 @@ class Writes {
     static void print(final int length) {
     }
 
+    void both2(final Boxed2 boxed, final String s) {
+        ((Box2<String>) (Box2) this.box2((Box2<?>) boxed)).pass(s, String.class, v -> print(v.length()));
+    }
+
     void caught(final Risk risk) {
         try {
             ((Hazard<IOException>) (Hazard) this.hazard((Hazard<?>) risk)).act();
@@ -3886,6 +3944,8 @@ abstract class Box2<X> {
     abstract <E extends Exception> void keep(X x, E e) throws E;
 
     abstract <T> void visit(Class<T> type, Consumer<T> action);
+
+    abstract <T> void pass(X x, Class<T> type, Consumer<T> action);
 }
 
 @SuppressWarnings("unused") // decompiler fixture
