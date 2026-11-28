@@ -294,7 +294,9 @@ public class AstMethodBodyBuilder {
         }
 
         if (takesClassTypeVariables((MethodReference) member) &&
-            (throwsOwnVariable((MethodReference) member) || takesGenericFunction((MethodReference) member)) &&
+            (throwsOwnVariable((MethodReference) member) ||
+             takesGenericFunction((MethodReference) member) ||
+             takesClassGenericFunction((MethodReference) member, new ArrayList<>(invocation.getArguments()))) &&
             specializeFromArguments(invocation, (MethodReference) member)) {
 
             return;
@@ -1451,7 +1453,9 @@ public class AstMethodBodyBuilder {
             final boolean takesVariables = widenedReceiver && takesClassTypeVariables(methodReference);
 
             if (takesVariables && thrown.isEmpty() &&
-                (throwsOwnVariable(methodReference) || takesGenericFunction(methodReference))) {
+                (throwsOwnVariable(methodReference) ||
+                 takesGenericFunction(methodReference) ||
+                 takesClassGenericFunction(methodReference, arguments))) {
 
                 // A raw receiver would erase what the method throws and the types of its lambdas, so the
                 // arguments specialize it.
@@ -2263,21 +2267,58 @@ public class AstMethodBodyBuilder {
         final Map<String, TypeReference> typeArguments = new HashMap<>();
 
         for (int i = 0; i < arguments.size() && i < definition.getParameters().size(); i++) {
-            final ResolveResult argument = resolver.apply(arguments.get(i));
+            final Expression expression = arguments.get(i);
+            final ResolveResult argument = resolver.apply(expression);
+            final TypeReference declared = definition.getParameters().get(i).getParameterType();
+            final Map<String, TypeReference> determined = new HashMap<>();
 
             if (argument != null && argument.getType() != null) {
-                final TypeReference declared = definition.getParameters().get(i).getParameterType();
-
-                final Map<String, TypeReference> determined = new HashMap<>();
-
                 addTypeArgument(determined, declared, argument.getType());
                 addNestedTypeArguments(determined, declared, argument.getType());
-
-                mergeTypeArguments(typeArguments, determined);
             }
+
+            if (isClassGenericFunction(declared, definition) && isInlineFunction(expression)) {
+                addFunctionTypeArguments(determined, declared, expression);
+            }
+
+            mergeTypeArguments(typeArguments, determined);
         }
 
         return typeArguments;
+    }
+
+    /** Recovers functional parameter types from the instantiated lambda descriptor. */
+    private void addFunctionTypeArguments(
+        final Map<String, TypeReference> arguments,
+        final TypeReference declared,
+        final Expression expression) {
+
+        final DynamicCallSite callSite = expression.getUserData(Keys.DYNAMIC_CALL_SITE);
+        final MethodDefinition descriptor = descriptorOf(declared.resolve());
+
+        if (descriptor == null || callSite == null || callSite.getBootstrapArguments().size() < 3 ||
+            !(callSite.getBootstrapArguments().get(2) instanceof IMethodSignature)) {
+
+            return;
+        }
+
+        final IMethodSignature implemented = (IMethodSignature) callSite.getBootstrapArguments().get(2);
+        final MethodReference functionalMethod = MetadataHelper.asMemberOf(descriptor, declared);
+        final List<ParameterDefinition> targets = functionalMethod.getParameters();
+        final List<ParameterDefinition> sources = implemented.getParameters();
+        final Map<String, TypeReference> inferred = new HashMap<>();
+
+        for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
+            addTypeArgument(inferred, targets.get(i).getParameterType(), sources.get(i).getParameterType());
+            addNestedTypeArguments(inferred, targets.get(i).getParameterType(), sources.get(i).getParameterType());
+        }
+
+        if (implemented.getReturnType().getSimpleType() != JvmType.Void) {
+            addTypeArgument(inferred, functionalMethod.getReturnType(), implemented.getReturnType());
+            addNestedTypeArguments(inferred, functionalMethod.getReturnType(), implemented.getReturnType());
+        }
+
+        inferred.forEach(arguments::putIfAbsent);
     }
 
     /**
@@ -3104,6 +3145,40 @@ public class AstMethodBodyBuilder {
 
         return isFunctionalInterface(definition) &&
                any(method.getGenericParameters(), variable -> mentions(type, variable.getSimpleName()));
+    }
+
+    /** Tells whether an inline functional argument needs the class variables of its receiver. */
+    private static boolean takesClassGenericFunction(
+        final MethodReference method,
+        final List<Expression> arguments) {
+
+        final MethodDefinition definition = method.resolve();
+
+        if (definition == null) {
+            return false;
+        }
+
+        final List<ParameterDefinition> parameters = definition.getParameters();
+
+        for (int i = 0, n = Math.min(arguments.size(), parameters.size()); i < n; i++) {
+            if (isInlineFunction(arguments.get(i)) &&
+                isClassGenericFunction(parameters.get(i).getParameterType(), definition)) {
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static boolean isInlineFunction(final Expression expression) {
+        return expression instanceof LambdaExpression || expression instanceof MethodGroupExpression;
+    }
+
+    private static boolean isClassGenericFunction(final TypeReference type, final MethodDefinition method) {
+        return type instanceof IGenericInstance &&
+               isFunctionalInterface(type.resolve()) &&
+               any(classVariables(method), variable -> mentions(type, variable.getSimpleName()));
     }
 
     private static boolean isFunctionalInterface(final TypeDefinition type) {
@@ -4300,10 +4375,14 @@ public class AstMethodBodyBuilder {
                     return false;
                 }
             }
-            else if (element instanceof IGenericInstance &&
-                     argumentElement instanceof IGenericInstance &&
-                     !bind((IGenericInstance) element, (IGenericInstance) argumentElement, bindings, wildcards)) {
+            else if (element instanceof IGenericInstance && argumentElement instanceof IGenericInstance) {
+                if (!MetadataHelper.isSameType(MetadataHelper.erase(element), MetadataHelper.erase(argumentElement)) ||
+                    !bind((IGenericInstance) element, (IGenericInstance) argumentElement, bindings, wildcards)) {
 
+                    return false;
+                }
+            }
+            else if (!element.containsGenericParameters() && !MetadataHelper.isSameType(element, argumentElement)) {
                 return false;
             }
         }
