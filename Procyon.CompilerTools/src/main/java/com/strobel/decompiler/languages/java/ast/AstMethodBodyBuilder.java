@@ -1401,6 +1401,11 @@ public class AstMethodBodyBuilder {
                 }
             }
 
+            if (widenedReceiver && thrown.isEmpty() && !takesVariables && throwsOwnVariable(methodReference)) {
+                // A raw receiver would erase the type variables of the method, along with what it throws.
+                target = wildcardReceiver(target, declaringType);
+            }
+
             if (target instanceof NullReferenceExpression) {
                 target = new CastExpression(_astBuilder.convertType(declaringType), target);
             }
@@ -1949,6 +1954,15 @@ public class AstMethodBodyBuilder {
         }
     }
 
+    /** Replaces a type given to a variable which is not within the upper bound a result requires. */
+    private static void keepWithin(final Map<String, TypeReference> arguments, final String name, final TypeReference upper) {
+        final TypeReference current = arguments.get(name);
+
+        if (current == null || current.isWildcardType() || !MetadataHelper.isAssignableFrom(upper, current)) {
+            arguments.put(name, upper);
+        }
+    }
+
     private void addExactTypeArguments(
         final Map<String, TypeReference> arguments,
         final TypeReference declared,
@@ -1976,6 +1990,12 @@ public class AstMethodBodyBuilder {
             if (source.isWildcardType()) {
                 if (target.isGenericParameter() && source.hasSuperBound() && !isOutOfScope(source.getSuperBound())) {
                     widenTo(arguments, target.getSimpleName(), source.getSuperBound());
+                }
+                else if (target.isGenericParameter() &&
+                         source.hasExtendsBound() &&
+                         !isOutOfScope(source.getExtendsBound())) {
+
+                    keepWithin(arguments, target.getSimpleName(), source.getExtendsBound());
                 }
 
                 continue;
@@ -2830,6 +2850,37 @@ public class AstMethodBodyBuilder {
                ((CastExpression) receiver).getType().getChildrenByRole(Roles.TYPE_ARGUMENT).isEmpty();
     }
 
+    /** Tells whether a method of a generic class throws one of its own type variables. */
+    private static boolean throwsOwnVariable(final MethodReference method) {
+        final MethodDefinition definition = method.resolve();
+
+        return definition != null &&
+               definition.getDeclaringType().isGenericDefinition() &&
+               any(definition.getThrownTypes(),
+                   thrown -> thrown.isGenericParameter() &&
+                             any(definition.getGenericParameters(),
+                                 variable -> variable.getSimpleName().equals(thrown.getSimpleName())));
+    }
+
+    /** Casts a receiver to its class with unknown type arguments. */
+    private Expression wildcardReceiver(final Expression receiver, final TypeReference declaringType) {
+        final TypeDefinition definition = declaringType.resolve();
+        final List<TypeReference> typeArguments = new ArrayList<>();
+
+        for (int i = 0; i < definition.getGenericParameters().size(); i++) {
+            typeArguments.add(com.strobel.assembler.metadata.WildcardType.unbounded());
+        }
+
+        final CastExpression cast = new CastExpression(
+            _astBuilder.convertType(definition.makeGenericType(typeArguments)),
+            receiver
+        );
+
+        cast.putUserData(Keys.RESULT_CAST, true);
+        cast.putUserData(Keys.WIDENED_BOUNDS, receiver.getUserData(Keys.WIDENED_BOUNDS));
+        return cast;
+    }
+
     private Expression rawReceiver(final Expression receiver, final TypeReference declaringType) {
         if (receiver.getUserData(Keys.RESULT_CAST) != null) {
             receiver.putUserData(Keys.WIDENED_BOUNDS, Collections.<TypeReference>emptyList());
@@ -3647,6 +3698,10 @@ public class AstMethodBodyBuilder {
 
             final TypeReference source = wildcard.getValue();
 
+            if (bound != null && bound.isWildcardType()) {
+                continue;
+            }
+
             if (bound == null) {
                 // Without an exact type, every lower bound must still be within every upper one.
                 if (!source.isWildcardType() && !isWithinUpperBounds(source, wildcard.getKey(), wildcards)) {
@@ -3909,6 +3964,10 @@ public class AstMethodBodyBuilder {
                         final TypeReference asElement = definition != null ? MetadataHelper.asSuper(definition, passed)
                                                                            : null;
 
+                        if (asElement == null && !target.hasSuperBound()) {
+                            return false;
+                        }
+
                         if (asElement instanceof IGenericInstance &&
                             !bind((IGenericInstance) element, (IGenericInstance) asElement, bindings, wildcards)) {
 
@@ -3940,6 +3999,11 @@ public class AstMethodBodyBuilder {
             }
 
             if (source.isWildcardType()) {
+                // The capture of a wildcard is a type of its own, which nothing else can equal.
+                if (target.isGenericParameter() && bindings.putIfAbsent(target.getSimpleName(), source) != null) {
+                    return false;
+                }
+
                 continue;
             }
 

@@ -385,6 +385,15 @@ public class GenericsTests extends DecompilerTest {
                 "        Wrapping<CharSequence, java.io.IOException> v = (Wrapping<CharSequence, java.io.IOException>) (Wrapping) wrapping((Wrapping<?, ?>) t);",
                 "        return v::get;",
                 "    }",
+                "    static class Ordered<X, E extends Exception> { java.util.List<X> get(X a, X b) throws E { return null; } }",
+                "    static class Orders extends Ordered<Comparable<?>, java.io.IOException> { }",
+                "    <T extends Ordered<?, ?>> T ordered(T t) { return t; }",
+                "    Orders ordered(Orders t) { return t; }",
+                "    interface Comparing { java.util.List<? extends Comparable<?>> run(String s, Integer n) throws java.io.IOException; }",
+                "    Comparing comparing(Orders t) {",
+                "        Ordered<Comparable<?>, java.io.IOException> v = (Ordered<Comparable<?>, java.io.IOException>) (Ordered) ordered((Ordered<?, ?>) t);",
+                "        return v::get;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -769,6 +778,15 @@ public class GenericsTests extends DecompilerTest {
             "    Above above(final Wrapper wrapper) {\n" +
             "        return ((Wrapping<CharSequence, IOException>)(Wrapping)this.wrapping((Wrapping)wrapper))::get;\n" +
             "    }\n" +
+            "    <T extends Ordered<?, ?>> T ordered(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Orders ordered(final Orders orders) {\n" +
+            "        return orders;\n" +
+            "    }\n" +
+            "    Comparing comparing(final Orders orders) {\n" +
+            "        return ((Ordered<Comparable<?>, IOException>)(Ordered)this.ordered((Ordered)orders))::get;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -797,6 +815,16 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    interface Comparing {\n" +
+            "        List<? extends Comparable<?>> run(final String p0, final Integer p1) throws IOException;\n" +
+            "    }\n" +
+            "    static class Orders extends Ordered<Comparable<?>, IOException> {\n" +
+            "    }\n" +
+            "    static class Ordered<X, E extends Exception> {\n" +
+            "        List<X> get(final X x, final X x2) throws E, Exception {\n" +
+            "            return null;\n" +
+            "        }\n" +
             "    }\n" +
             "    interface Above {\n" +
             "        List<? super CharSequence> run(final String p0) throws IOException;\n" +
@@ -1970,6 +1998,18 @@ public class GenericsTests extends DecompilerTest {
             "    void shaped(final Integer e, final List<Set<String>> a, final List<Integer> b) {\n" +
             "        this.shape(e, a, b);\n" +
             "    }\n" +
+            "    <E extends Number> void heaped2(final E e, final List<Set<String>[]> a, final List<Integer> b) {\n" +
+            "    }\n" +
+            "    <N> void heaped2(final Integer e, final Collection<? extends List<N>[]> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    <E extends Number> void captures(final E e, final List<?> a, final List<Integer> b) {\n" +
+            "    }\n" +
+            "    <N> void captures(final Integer e, final Collection<N> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    void unrelated(final Integer e, final List<Set<String>[]> a, final List<?> c, final List<Integer> b) {\n" +
+            "        this.heaped2(e, a, b);\n" +
+            "        this.captures(e, c, b);\n" +
+            "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
             "    <N> void add(final Integer e, final Collection<N> list, final N n) {\n" +
@@ -2159,6 +2199,15 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void posted(final Posting posting, final String s) throws IOException {\n" +
             "        ((Poster<String, IOException>)(Poster)this.poster((Poster)posting)).post(s);\n" +
+            "    }\n" +
+            "    <T extends Box2<?>> T box2(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Boxed2 box2(final Boxed2 boxed) {\n" +
+            "        return boxed;\n" +
+            "    }\n" +
+            "    void own(final Boxed2 boxed, final IOException e) throws IOException {\n" +
+            "        ((Box2<?>)this.box2((Box2)boxed)).act(e);\n" +
             "    }\n" +
             "    void caught(final Risk risk) {\n" +
             "        try {\n" +
@@ -3325,6 +3374,23 @@ class Shared {
         this.shape(e, a, b);
     }
 
+    <E extends Number> void heaped2(final E e, final List<Set<String>[]> a, final List<Integer> b) {
+    }
+
+    <N> void heaped2(final Integer e, final Collection<? extends List<N>[]> a, final Collection<N> b) {
+    }
+
+    <E extends Number> void captures(final E e, final List<?> a, final List<Integer> b) {
+    }
+
+    <N> void captures(final Integer e, final Collection<N> a, final Collection<N> b) {
+    }
+
+    void unrelated(final Integer e, final List<Set<String>[]> a, final List<?> c, final List<Integer> b) {
+        this.heaped2(e, a, b);
+        this.captures(e, c, b);
+    }
+
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {
     }
 
@@ -3555,6 +3621,18 @@ class Writes {
         ((Poster<String, IOException>) (Poster) this.poster((Poster<?, ?>) posting)).post(s);
     }
 
+    <T extends Box2<?>> T box2(final T t) {
+        return t;
+    }
+
+    Boxed2 box2(final Boxed2 boxed) {
+        return boxed;
+    }
+
+    void own(final Boxed2 boxed, final IOException e) throws IOException {
+        this.box2((Box2<?>) boxed).act(e);
+    }
+
     void caught(final Risk risk) {
         try {
             ((Hazard<IOException>) (Hazard) this.hazard((Hazard<?>) risk)).act();
@@ -3593,6 +3671,15 @@ abstract class Poster<X, E extends Exception> {
 
 @SuppressWarnings("unused") // decompiler fixture
 abstract class Posting extends Poster<String, IOException> {
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+abstract class Box2<X> {
+    abstract <E extends Exception> void act(E e) throws E;
+}
+
+@SuppressWarnings("unused") // decompiler fixture
+abstract class Boxed2 extends Box2<String> {
 }
 
 @SuppressWarnings("unused") // decompiler fixture
