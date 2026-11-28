@@ -2010,6 +2010,13 @@ public class GenericsTests extends DecompilerTest {
             "        this.heaped2(e, a, b);\n" +
             "        this.captures(e, c, b);\n" +
             "    }\n" +
+            "    <E extends Number> void flat(final E e, final List<String> a, final List<Integer> b) {\n" +
+            "    }\n" +
+            "    <N> void flat(final Integer e, final Collection<? extends N[]> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    void shallow(final Integer e, final List<String> a, final List<Integer> b) {\n" +
+            "        this.flat(e, a, b);\n" +
+            "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
             "    <N> void add(final Integer e, final Collection<N> list, final N n) {\n" +
@@ -2208,6 +2215,9 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void own(final Boxed2 boxed, final IOException e) throws IOException {\n" +
             "        ((Box2<?>)this.box2((Box2)boxed)).act(e);\n" +
+            "    }\n" +
+            "    void mine(final Boxed2 boxed, final String s, final IOException e) throws IOException {\n" +
+            "        ((Box2<String>)(Box2)this.box2((Box2)boxed)).keep(s, e);\n" +
             "    }\n" +
             "    void caught(final Risk risk) {\n" +
             "        try {\n" +
@@ -3391,6 +3401,16 @@ class Shared {
         this.captures(e, c, b);
     }
 
+    <E extends Number> void flat(final E e, final List<String> a, final List<Integer> b) {
+    }
+
+    <N> void flat(final Integer e, final Collection<? extends N[]> a, final Collection<N> b) {
+    }
+
+    void shallow(final Integer e, final List<String> a, final List<Integer> b) {
+        this.flat(e, a, b);
+    }
+
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {
     }
 
@@ -3633,6 +3653,10 @@ class Writes {
         this.box2((Box2<?>) boxed).act(e);
     }
 
+    void mine(final Boxed2 boxed, final String s, final IOException e) throws IOException {
+        ((Box2<String>) (Box2) this.box2((Box2<?>) boxed)).keep(s, e);
+    }
+
     void caught(final Risk risk) {
         try {
             ((Hazard<IOException>) (Hazard) this.hazard((Hazard<?>) risk)).act();
@@ -3676,6 +3700,8 @@ abstract class Posting extends Poster<String, IOException> {
 @SuppressWarnings("unused") // decompiler fixture
 abstract class Box2<X> {
     abstract <E extends Exception> void act(E e) throws E;
+
+    abstract <E extends Exception> void keep(X x, E e) throws E;
 }
 
 @SuppressWarnings("unused") // decompiler fixture

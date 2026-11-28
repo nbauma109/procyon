@@ -1375,7 +1375,26 @@ public class AstMethodBodyBuilder {
                                 : Collections.<String, TypeReference>emptyMap();
             final boolean takesVariables = widenedReceiver && takesClassTypeVariables(methodReference);
 
-            if (takesVariables && thrown.isEmpty()) {
+            if (takesVariables && thrown.isEmpty() && throwsOwnVariable(methodReference)) {
+                // A raw receiver would erase what the method throws, so the arguments specialize it.
+                final Map<String, TypeReference> typeArguments = argumentTypeArguments(methodReference, arguments);
+                final Expression discarded = discardResultCast(receiver);
+
+                // The arguments of type variables of the method say nothing of the receiver.
+                typeArguments.keySet().retainAll(classVariableNames(methodReference));
+
+                target = typeArguments.isEmpty()
+                         ? discarded
+                         : specializedReceiver(discarded,
+                                               declaringType,
+                                               typeArguments,
+                                               typeArguments.keySet().iterator().next());
+
+                if (target == discarded) {
+                    target = rawReceiver(discarded, declaringType);
+                }
+            }
+            else if (takesVariables && thrown.isEmpty()) {
                 // Only a raw receiver still takes the arguments typed as before the widening.
                 target = rawReceiver(receiver, declaringType);
             }
@@ -2862,6 +2881,16 @@ public class AstMethodBodyBuilder {
                                  variable -> variable.getSimpleName().equals(thrown.getSimpleName())));
     }
 
+    private static List<String> classVariableNames(final MethodReference method) {
+        final List<String> names = new ArrayList<>();
+
+        for (final GenericParameter variable : method.resolve().getDeclaringType().getGenericParameters()) {
+            names.add(variable.getSimpleName());
+        }
+
+        return names;
+    }
+
     /** Casts a receiver to its class with unknown type arguments. */
     private Expression wildcardReceiver(final Expression receiver, final TypeReference declaringType) {
         final TypeDefinition definition = declaringType.resolve();
@@ -3957,6 +3986,11 @@ public class AstMethodBodyBuilder {
                     while (passed != null && element.isArray() && passed.isArray()) {
                         element = element.getElementType();
                         passed = passed.getElementType();
+                    }
+
+                    // An upper bound which is an array admits nothing with fewer dimensions.
+                    if (passed != null && element.isArray() && !target.hasSuperBound()) {
+                        return false;
                     }
 
                     if (passed != null && element instanceof IGenericInstance) {
