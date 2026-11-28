@@ -444,6 +444,27 @@ public class GenericsTests extends DecompilerTest {
                 "        Pegged<Compared, Object, java.io.IOException> k = (Pegged<Compared, Object, java.io.IOException>) (Pegged) pegged((Pegged<?, ?, ?>) t);",
                 "        return k::act;",
                 "    }",
+                "    static class Mine<X> { <E extends Exception> void act(X x, E e) throws E { } }",
+                "    static class Mined extends Mine<String> { }",
+                "    <T extends Mine<?>> T mine(T t) { return t; }",
+                "    Mined mine(Mined t) { return t; }",
+                "    void earlyMine(Mined t, String s, java.io.IOException e, int n) throws java.io.IOException {",
+                "        Mine<String> b = new Mined();",
+                "        while (n-- > 0) {",
+                "            b.act(s, e);",
+                "            b = (Mine<String>) (Mine) mine((Mine<?>) t);",
+                "        }",
+                "    }",
+                "    static class Numbered extends Number implements Comparable<Object> { public int compareTo(Object o) { return 0; } public int intValue() { return 0; } public long longValue() { return 0; } public float floatValue() { return 0; } public double doubleValue() { return 0; } }",
+                "    static class Both4<X extends Number & Comparable<Y>, Y, E extends Exception> { void act(X x, Y y) throws E { } }",
+                "    static class Bothing extends Both4<Numbered, Object, java.io.IOException> { }",
+                "    <T extends Both4<?, ?, ?>> T both4(T t) { return t; }",
+                "    Bothing both4(Bothing t) { return t; }",
+                "    interface Num { void run(Numbered c, Integer n) throws java.io.IOException; }",
+                "    Num num(Bothing t) {",
+                "        Both4<Numbered, Object, java.io.IOException> k = (Both4<Numbered, Object, java.io.IOException>) (Both4) both4((Both4<?, ?, ?>) t);",
+                "        return k::act;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -886,6 +907,28 @@ public class GenericsTests extends DecompilerTest {
             "    Peg peg(final Pegging pegging) {\n" +
             "        return ((Pegged<Compared, Object, IOException>)(Pegged)this.pegged((Pegged)pegging))::act;\n" +
             "    }\n" +
+            "    <T extends Mine<?>> T mine(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Mined mine(final Mined mined) {\n" +
+            "        return mined;\n" +
+            "    }\n" +
+            "    void earlyMine(final Mined mined, final String s, final IOException ex, int n) throws IOException {\n" +
+            "        Mine mine = new Mined();\n" +
+            "        while (n-- > 0) {\n" +
+            "            ((Mine<String>)(Mine)mine).act(s, ex);\n" +
+            "            mine = this.mine((Mine)mined);\n" +
+            "        }\n" +
+            "    }\n" +
+            "    <T extends Both4<?, ?, ?>> T both4(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Bothing both4(final Bothing bothing) {\n" +
+            "        return bothing;\n" +
+            "    }\n" +
+            "    Num num(final Bothing bothing) {\n" +
+            "        return ((Both4<Numbered, Object, IOException>)(Both4)this.both4((Both4)bothing))::act;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -914,6 +957,43 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    interface Num {\n" +
+            "        void run(final Numbered p0, final Integer p1) throws IOException;\n" +
+            "    }\n" +
+            "    static class Numbered extends Number implements Comparable<Object> {\n" +
+            "        @Override\n" +
+            "        public int compareTo(final Object o) {\n" +
+            "            return 0;\n" +
+            "        }\n" +
+            "        @Override\n" +
+            "        public int intValue() {\n" +
+            "            return 0;\n" +
+            "        }\n" +
+            "        @Override\n" +
+            "        public long longValue() {\n" +
+            "            return 0L;\n" +
+            "        }\n" +
+            "        @Override\n" +
+            "        public float floatValue() {\n" +
+            "            return 0.0f;\n" +
+            "        }\n" +
+            "        @Override\n" +
+            "        public double doubleValue() {\n" +
+            "            return 0.0;\n" +
+            "        }\n" +
+            "    }\n" +
+            "    static class Bothing extends Both4<Numbered, Object, IOException> {\n" +
+            "    }\n" +
+            "    static class Both4<X extends Number & Comparable<Y>, Y, E extends Exception> {\n" +
+            "        void act(final X x, final Y y) throws E, Exception {\n" +
+            "        }\n" +
+            "    }\n" +
+            "    static class Mined extends Mine<String> {\n" +
+            "    }\n" +
+            "    static class Mine<X> {\n" +
+            "        <E extends Exception> void act(final X x, final E e) throws E, Exception {\n" +
+            "        }\n" +
             "    }\n" +
             "    interface Peg {\n" +
             "        void run(final Compared p0, final Integer p1) throws IOException;\n" +
@@ -2197,6 +2277,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void thinly(final Integer e, final List<String> a, final List<Integer> b) {\n" +
             "        this.thin(e, a, b);\n" +
+            "    }\n" +
+            "    <E extends Number> void classed(final E e, final List<Set<String>[]> a, final List<String> b) {\n" +
+            "    }\n" +
+            "    <N> void classed(final Integer e, final Collection<List<N>[]> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    void classes(final Integer e, final List<Set<String>[]> a, final List<String> b) {\n" +
+            "        this.classed(e, a, b);\n" +
             "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
@@ -3638,6 +3725,16 @@ class Shared {
 
     void thinly(final Integer e, final List<String> a, final List<Integer> b) {
         this.thin(e, a, b);
+    }
+
+    <E extends Number> void classed(final E e, final List<Set<String>[]> a, final List<String> b) {
+    }
+
+    <N> void classed(final Integer e, final Collection<List<N>[]> a, final Collection<N> b) {
+    }
+
+    void classes(final Integer e, final List<Set<String>[]> a, final List<String> b) {
+        this.classed(e, a, b);
     }
 
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {

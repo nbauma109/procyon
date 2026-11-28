@@ -293,6 +293,13 @@ public class AstMethodBodyBuilder {
             return;
         }
 
+        if (takesClassTypeVariables((MethodReference) member) &&
+            (throwsOwnVariable((MethodReference) member) || takesGenericFunction((MethodReference) member)) &&
+            specializeFromArguments(invocation, (MethodReference) member)) {
+
+            return;
+        }
+
         // Only a receiver left raw needs its arguments cast to erasures.
         if (takesClassTypeVariables((MethodReference) member)) {
             final List<Expression> arguments = new ArrayList<>(invocation.getArguments());
@@ -312,6 +319,47 @@ public class AstMethodBodyBuilder {
                 wildcardReceiver(receiver, ((MethodReference) member).getDeclaringType())
             ));
         }
+    }
+
+    /** Specializes the receiver of an earlier invocation with the types which its arguments determine. */
+    private boolean specializeFromArguments(final InvocationExpression invocation, final MethodReference method) {
+        final Expression access = invocation.getTarget();
+
+        if (!(access instanceof MemberReferenceExpression)) {
+            return false;
+        }
+
+        final Expression receiver = ((MemberReferenceExpression) access).getTarget();
+        final List<Expression> arguments = new ArrayList<>(invocation.getArguments());
+
+        receiver.remove();
+
+        final Expression specialized = receiverFromArguments(receiver, method, arguments);
+
+        ((MemberReferenceExpression) access).setTarget(
+            specialized != receiver ? new ParenthesizedExpression(specialized) : receiver
+        );
+
+        return specialized != receiver;
+    }
+
+    /** Specializes a receiver with the types of its class variables which some arguments determine. */
+    private Expression receiverFromArguments(
+        final Expression receiver,
+        final MethodReference method,
+        final List<Expression> arguments) {
+
+        final Map<String, TypeReference> typeArguments = argumentTypeArguments(method, arguments);
+
+        // The arguments of type variables of the method say nothing of the receiver.
+        typeArguments.keySet().retainAll(classVariableNames(method));
+
+        return typeArguments.isEmpty()
+               ? receiver
+               : specializedReceiver(receiver,
+                                     method.getDeclaringType(),
+                                     typeArguments,
+                                     typeArguments.keySet().iterator().next());
     }
 
     /** Specializes the receiver of an earlier invocation which would otherwise throw a bound. */
@@ -1393,18 +1441,9 @@ public class AstMethodBodyBuilder {
 
                 // A raw receiver would erase what the method throws and the types of its lambdas, so the
                 // arguments specialize it.
-                final Map<String, TypeReference> typeArguments = argumentTypeArguments(methodReference, arguments);
                 final Expression discarded = discardResultCast(receiver);
 
-                // The arguments of type variables of the method say nothing of the receiver.
-                typeArguments.keySet().retainAll(classVariableNames(methodReference));
-
-                target = typeArguments.isEmpty()
-                         ? discarded
-                         : specializedReceiver(discarded,
-                                               declaringType,
-                                               typeArguments,
-                                               typeArguments.keySet().iterator().next());
+                target = receiverFromArguments(discarded, methodReference, arguments);
 
                 if (target == discarded) {
                     target = rawReceiver(discarded, declaringType);
@@ -2287,29 +2326,9 @@ public class AstMethodBodyBuilder {
 
         // A parameterized bound fixes the arguments of the variables which it names.
         for (final GenericParameter variable : definition.getGenericParameters()) {
-            final TypeReference bound = variable.hasExtendsBound() ? variable.getExtendsBound() : null;
-            final TypeDefinition boundType = bound instanceof IGenericInstance ? bound.resolve() : null;
-            final TypeReference argument = reconciled.get(variable.getSimpleName());
-
-            if (boundType == null || argument == null || argument.isWildcardType()) {
-                continue;
-            }
-
-            final TypeReference viewed = MetadataHelper.asSuper(boundType, argument);
-
-            if (!(viewed instanceof IGenericInstance)) {
-                continue;
-            }
-
-            final List<TypeReference> targets = ((IGenericInstance) bound).getTypeArguments();
-            final List<TypeReference> sources = ((IGenericInstance) viewed).getTypeArguments();
-
-            for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
-                if (targets.get(i).isGenericParameter() &&
-                    !sources.get(i).isWildcardType() &&
-                    !sources.get(i).isGenericParameter()) {
-
-                    reconciled.put(targets.get(i).getSimpleName(), sources.get(i));
+            if (variable.hasExtendsBound()) {
+                for (final TypeReference component : typesOf(variable.getExtendsBound())) {
+                    fixBoundArguments(reconciled, component, reconciled.get(variable.getSimpleName()));
                 }
             }
         }
@@ -2332,6 +2351,36 @@ public class AstMethodBodyBuilder {
         }
 
         return reconciled;
+    }
+
+    private static void fixBoundArguments(
+        final Map<String, TypeReference> arguments,
+        final TypeReference bound,
+        final TypeReference argument) {
+
+        final TypeDefinition boundType = bound instanceof IGenericInstance ? bound.resolve() : null;
+
+        if (boundType == null || argument == null || argument.isWildcardType()) {
+            return;
+        }
+
+        final TypeReference viewed = MetadataHelper.asSuper(boundType, argument);
+
+        if (!(viewed instanceof IGenericInstance)) {
+            return;
+        }
+
+        final List<TypeReference> targets = ((IGenericInstance) bound).getTypeArguments();
+        final List<TypeReference> sources = ((IGenericInstance) viewed).getTypeArguments();
+
+        for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
+            if (targets.get(i).isGenericParameter() &&
+                !sources.get(i).isWildcardType() &&
+                !sources.get(i).isGenericParameter()) {
+
+                arguments.put(targets.get(i).getSimpleName(), sources.get(i));
+            }
+        }
     }
 
     /**
@@ -4152,6 +4201,15 @@ public class AstMethodBodyBuilder {
             while (element.isArray() && argumentElement.isArray()) {
                 element = element.getElementType();
                 argumentElement = argumentElement.getElementType();
+            }
+
+            // A type argument built from type variables admits only its own class.
+            if (element instanceof IGenericInstance &&
+                element.containsGenericParameters() &&
+                (!(argumentElement instanceof IGenericInstance) ||
+                 !MetadataHelper.isSameType(MetadataHelper.erase(element), MetadataHelper.erase(argumentElement)))) {
+
+                return false;
             }
 
             // An array type accepts nothing with fewer dimensions.
