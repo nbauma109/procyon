@@ -380,6 +380,11 @@ public class GenericsTests extends DecompilerTest {
                 "            b = (Takes2<String, java.io.IOException>) (Takes2) takes2((Takes2<?, ?>) t);",
                 "        }",
                 "    }",
+                "    interface Above { java.util.List<? super CharSequence> run(String s) throws java.io.IOException; }",
+                "    Above above(Wrapper t) {",
+                "        Wrapping<CharSequence, java.io.IOException> v = (Wrapping<CharSequence, java.io.IOException>) (Wrapping) wrapping((Wrapping<?, ?>) t);",
+                "        return v::get;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -761,6 +766,9 @@ public class GenericsTests extends DecompilerTest {
             "            takes2 = this.takes2((Takes2)taken);\n" +
             "        }\n" +
             "    }\n" +
+            "    Above above(final Wrapper wrapper) {\n" +
+            "        return ((Wrapping<CharSequence, IOException>)(Wrapping)this.wrapping((Wrapping)wrapper))::get;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -789,6 +797,9 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    interface Above {\n" +
+            "        List<? super CharSequence> run(final String p0) throws IOException;\n" +
             "    }\n" +
             "    static class Taken extends Takes2<String, IOException> {\n" +
             "    }\n" +

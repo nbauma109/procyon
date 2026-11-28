@@ -1940,6 +1940,15 @@ public class AstMethodBodyBuilder {
         return arguments;
     }
 
+    /** Makes the type given to a variable accept a type which a lower-bounded result requires. */
+    private static void widenTo(final Map<String, TypeReference> arguments, final String name, final TypeReference lower) {
+        final TypeReference current = arguments.get(name);
+
+        if (current == null || current.isWildcardType() || !MetadataHelper.isAssignableFrom(current, lower)) {
+            arguments.put(name, current == null || current.isWildcardType() ? lower : commonType(current, lower));
+        }
+    }
+
     private void addExactTypeArguments(
         final Map<String, TypeReference> arguments,
         final TypeReference declared,
@@ -1964,7 +1973,15 @@ public class AstMethodBodyBuilder {
             final TypeReference target = targets.get(i);
             final TypeReference source = sources.get(i);
 
-            if (source.isWildcardType() || isOutOfScope(source)) {
+            if (source.isWildcardType()) {
+                if (target.isGenericParameter() && source.hasSuperBound() && !isOutOfScope(source.getSuperBound())) {
+                    widenTo(arguments, target.getSimpleName(), source.getSuperBound());
+                }
+
+                continue;
+            }
+
+            if (isOutOfScope(source)) {
                 continue;
             }
 
