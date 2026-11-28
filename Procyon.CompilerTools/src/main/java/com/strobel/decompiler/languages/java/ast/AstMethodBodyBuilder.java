@@ -958,10 +958,11 @@ public class AstMethodBodyBuilder {
                         methodGroup.putUserData(Keys.TYPE_REFERENCE, byteCode.getInferredType());
                     }
 
-                    // A raw receiver could select another overload of a member typed by its variables.
+                    // A raw receiver could select another overload or erase the method's exception inference.
                     if (hasInstanceArgument &&
                         isWidened(arg1) &&
-                        isOverloadedOnClassVariables(targetMethod) &&
+                        (isOverloadedOnClassVariables(targetMethod) ||
+                         takesClassTypeVariables(targetMethod) && throwsOwnVariable(targetMethod)) &&
                         callSite.getBootstrapArguments().get(2) instanceof IMethodSignature) {
 
                         final Map<String, TypeReference> typeArguments = receiverTypeArguments(
@@ -2387,26 +2388,62 @@ public class AstMethodBodyBuilder {
         final List<TypeReference> sources = ((IGenericInstance) viewed).getTypeArguments();
 
         for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
-            TypeReference target = targets.get(i);
-            TypeReference source = sources.get(i);
+            fixBoundArgument(arguments, targets.get(i), sources.get(i));
+        }
+    }
 
-            while (target.isArray() && source.isArray()) {
-                target = target.getElementType();
-                source = source.getElementType();
-            }
+    private static void fixBoundArgument(
+        final Map<String, TypeReference> arguments,
+        final TypeReference target,
+        final TypeReference source) {
 
-            if (source.isWildcardType() || source.isGenericParameter()) {
-                continue;
-            }
+        if (source.isWildcardType() || source.isGenericParameter() || source.isPrimitive()) {
+            return;
+        }
 
-            if (target.isGenericParameter()) {
-                if (!source.isPrimitive()) {
-                    arguments.put(target.getSimpleName(), source);
-                }
+        if (target.isArray() && source.isArray()) {
+            fixBoundArgument(arguments, target.getElementType(), source.getElementType());
+            return;
+        }
+
+        if (target.isWildcardType()) {
+            fixWildcardBoundArgument(arguments, target, source);
+        }
+        else if (target.isGenericParameter()) {
+            arguments.put(target.getSimpleName(), source);
+        }
+        else {
+            fixBoundArguments(arguments, target, source);
+        }
+    }
+
+    private static void fixWildcardBoundArgument(
+        final Map<String, TypeReference> arguments,
+        final TypeReference wildcard,
+        final TypeReference source) {
+
+        TypeReference bound = wildcardBound(wildcard);
+        TypeReference actual = source;
+
+        if (bound == null) {
+            return;
+        }
+
+        while (bound.isArray() && actual.isArray()) {
+            bound = bound.getElementType();
+            actual = actual.getElementType();
+        }
+
+        if (bound.isGenericParameter() && !actual.isPrimitive() && !actual.isGenericParameter()) {
+            if (wildcard.hasSuperBound()) {
+                keepWithin(arguments, bound.getSimpleName(), actual);
             }
             else {
-                fixBoundArguments(arguments, target, source);
+                widenTo(arguments, bound.getSimpleName(), actual);
             }
+        }
+        else if (!wildcard.hasSuperBound()) {
+            fixBoundArguments(arguments, bound, actual);
         }
     }
 
@@ -4185,20 +4222,10 @@ public class AstMethodBodyBuilder {
                         return false;
                     }
 
-                    if (passed != null && element instanceof IGenericInstance) {
-                        final TypeDefinition definition = element.resolve();
-                        final TypeReference asElement = definition != null ? MetadataHelper.asSuper(definition, passed)
-                                                                           : null;
+                    if (passed != null && element instanceof IGenericInstance &&
+                        !bindParameterizedBound(element, passed, target.hasSuperBound(), bindings, wildcards)) {
 
-                        if (asElement == null && !target.hasSuperBound()) {
-                            return false;
-                        }
-
-                        if (asElement instanceof IGenericInstance &&
-                            !bind((IGenericInstance) element, (IGenericInstance) asElement, bindings, wildcards)) {
-
-                            return false;
-                        }
+                        return false;
                     }
 
                     // The elements of the argument are related to the type for which a variable stands in the
