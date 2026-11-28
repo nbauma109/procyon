@@ -1420,8 +1420,11 @@ public class AstMethodBodyBuilder {
                 }
             }
 
-            if (widenedReceiver && thrown.isEmpty() && !takesVariables && throwsOwnVariable(methodReference)) {
-                // A raw receiver would erase the type variables of the method, along with what it throws.
+            if (widenedReceiver && thrown.isEmpty() && !takesVariables &&
+                (throwsOwnVariable(methodReference) || takesGenericFunction(methodReference))) {
+
+                // A raw receiver would erase the type variables of the method, along with what it throws and
+                // the types of its lambdas.
                 target = wildcardReceiver(target, declaringType);
             }
 
@@ -2916,6 +2919,24 @@ public class AstMethodBodyBuilder {
         return names;
     }
 
+    /** Tells whether a method of a generic class takes a function typed by one of its own variables. */
+    private static boolean takesGenericFunction(final MethodReference method) {
+        final MethodDefinition definition = method.resolve();
+
+        return definition != null &&
+               definition.getDeclaringType().isGenericDefinition() &&
+               any(definition.getParameters(), p -> isGenericFunction(p.getParameterType(), definition));
+    }
+
+    private static boolean isGenericFunction(final TypeReference type, final MethodDefinition method) {
+        final TypeDefinition definition = type instanceof IGenericInstance ? type.resolve() : null;
+
+        return definition != null &&
+               definition.isInterface() &&
+               descriptorOf(definition) != null &&
+               any(method.getGenericParameters(), variable -> mentions(type, variable.getSimpleName()));
+    }
+
     /** Casts a receiver to its class with unknown type arguments. */
     private Expression wildcardReceiver(final Expression receiver, final TypeReference declaringType) {
         final TypeDefinition definition = declaringType.resolve();
@@ -4065,6 +4086,11 @@ public class AstMethodBodyBuilder {
             if (source.isWildcardType()) {
                 // The capture of a wildcard is a type of its own, which nothing else can equal.
                 if (target.isGenericParameter() && bindings.putIfAbsent(target.getSimpleName(), source) != null) {
+                    return false;
+                }
+
+                // Nor can it equal a type built from type variables.
+                if (!target.isGenericParameter() && target.containsGenericParameters()) {
                     return false;
                 }
 

@@ -2086,6 +2086,13 @@ public class GenericsTests extends DecompilerTest {
             "    void primitives2(final Integer e, final List<int[]> a, final List<Integer> b) {\n" +
             "        this.primitive(e, a, b);\n" +
             "    }\n" +
+            "    <E extends Number> void nestedCapture(final E e, final List<? extends List<String>> a, final List<Integer> b) {\n" +
+            "    }\n" +
+            "    <N> void nestedCapture(final Integer e, final Collection<List<N>> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    void nestedly(final Integer e, final List<? extends List<String>> a, final List<Integer> b) {\n" +
+            "        this.nestedCapture(e, a, b);\n" +
+            "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
             "    <N> void add(final Integer e, final Collection<N> list, final N n) {\n" +
@@ -2287,6 +2294,11 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void mine(final Boxed2 boxed, final String s, final IOException e) throws IOException {\n" +
             "        ((Box2<String>)(Box2)this.box2((Box2)boxed)).keep(s, e);\n" +
+            "    }\n" +
+            "    void visited(final Boxed2 boxed) {\n" +
+            "        ((Box2<?>)this.box2((Box2)boxed)).visit(String.class, s -> print(s.length()));\n" +
+            "    }\n" +
+            "    static void print(final int length) {\n" +
             "    }\n" +
             "    void caught(final Risk risk) {\n" +
             "        try {\n" +
@@ -3490,6 +3502,16 @@ class Shared {
         this.primitive(e, a, b);
     }
 
+    <E extends Number> void nestedCapture(final E e, final List<? extends List<String>> a, final List<Integer> b) {
+    }
+
+    <N> void nestedCapture(final Integer e, final Collection<List<N>> a, final Collection<N> b) {
+    }
+
+    void nestedly(final Integer e, final List<? extends List<String>> a, final List<Integer> b) {
+        this.nestedCapture(e, a, b);
+    }
+
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {
     }
 
@@ -3736,6 +3758,13 @@ class Writes {
         ((Box2<String>) (Box2) this.box2((Box2<?>) boxed)).keep(s, e);
     }
 
+    void visited(final Boxed2 boxed) {
+        this.box2((Box2<?>) boxed).visit(String.class, s -> print(s.length()));
+    }
+
+    static void print(final int length) {
+    }
+
     void caught(final Risk risk) {
         try {
             ((Hazard<IOException>) (Hazard) this.hazard((Hazard<?>) risk)).act();
@@ -3781,6 +3810,8 @@ abstract class Box2<X> {
     abstract <E extends Exception> void act(E e) throws E;
 
     abstract <E extends Exception> void keep(X x, E e) throws E;
+
+    abstract <T> void visit(Class<T> type, Consumer<T> action);
 }
 
 @SuppressWarnings("unused") // decompiler fixture
