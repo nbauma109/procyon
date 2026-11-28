@@ -354,6 +354,11 @@ public class GenericsTests extends DecompilerTest {
                 "        }",
                 "        return r;",
                 "    }",
+                "    interface Narrow { java.util.List<? extends String> run() throws java.io.IOException; }",
+                "    Narrow narrow(Resulting t) {",
+                "        Results<String, java.io.IOException> w = (Results<String, java.io.IOException>) (Results) results((Results<?, ?>) t);",
+                "        return (Narrow) w::get;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -710,6 +715,9 @@ public class GenericsTests extends DecompilerTest {
             "        }\n" +
             "        return string;\n" +
             "    }\n" +
+            "    Narrow narrow(final Resulting resulting) {\n" +
+            "        return ((Results<String, IOException>)(Results)this.results((Results)resulting))::get;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -738,6 +746,9 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    interface Narrow {\n" +
+            "        List<? extends String> run() throws IOException;\n" +
             "    }\n" +
             "    static class Texted2 extends Texts<IOException> {\n" +
             "    }\n" +
@@ -1874,6 +1885,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void boxes(final Integer e, final List<List<String>[]> a, final List<Integer> b) {\n" +
             "        this.boxed(e, a, b);\n" +
+            "    }\n" +
+            "    <E extends Number> void pairs(final E e, final String a, final Integer b) {\n" +
+            "    }\n" +
+            "    <N extends Comparable<N>> void pairs(final Integer e, final N a, final N b) {\n" +
+            "    }\n" +
+            "    void paired(final Integer e, final String a, final Integer b) {\n" +
+            "        this.pairs(e, a, b);\n" +
             "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
@@ -3208,6 +3226,16 @@ class Shared {
 
     void boxes(final Integer e, final List<List<String>[]> a, final List<Integer> b) {
         this.boxed(e, a, b);
+    }
+
+    <E extends Number> void pairs(final E e, final String a, final Integer b) {
+    }
+
+    <N extends Comparable<N>> void pairs(final Integer e, final N a, final N b) {
+    }
+
+    void paired(final Integer e, final String a, final Integer b) {
+        this.pairs(e, a, b);
     }
 
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {

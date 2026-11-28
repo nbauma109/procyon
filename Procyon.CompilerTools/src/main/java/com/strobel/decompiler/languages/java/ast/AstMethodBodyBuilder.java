@@ -2030,6 +2030,10 @@ public class AstMethodBodyBuilder {
                 element = wildcardBound(element);
                 target = wildcardBound(target);
             }
+            else if (element.isWildcardType() && target.isGenericParameter() && wildcardBound(element) != null) {
+                // The bound of a wildcard is a type which satisfies it.
+                element = wildcardBound(element);
+            }
             else if (!element.isWildcardType() && target.isWildcardType() && wildcardBound(target) != null) {
                 // A type itself is within the bound which it must satisfy.
                 target = wildcardBound(target);
@@ -3542,12 +3546,16 @@ public class AstMethodBodyBuilder {
 
         final Map<String, TypeReference> inferred = new HashMap<>(bindings);
 
-        // An argument of a type variable itself tells what it stands for when nothing else does.
+        // Arguments of a type variable itself tell what it stands for when nothing else does: a type
+        // which accepts all of them.
         for (final Map.Entry<Integer, TypeReference> argument : argumentTypes.entrySet()) {
             final TypeReference parameterType = candidate.getParameters().get(argument.getKey()).getParameterType();
 
-            if (parameterType.isGenericParameter() && !argument.getValue().isPrimitive()) {
-                inferred.putIfAbsent(parameterType.getSimpleName(), argument.getValue());
+            if (parameterType.isGenericParameter() &&
+                !argument.getValue().isPrimitive() &&
+                !bindings.containsKey(parameterType.getSimpleName())) {
+
+                inferred.merge(parameterType.getSimpleName(), argument.getValue(), AstMethodBodyBuilder::commonType);
             }
         }
 
