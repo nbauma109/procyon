@@ -81,7 +81,12 @@ public final class RedundantCastUtility {
             operand = ((ParenthesizedExpression) operand).getExpression();
         }
 
-        if (operand.isNull()) {
+        if (operand.isNull() ||
+            castExpression.getUserData(Keys.RESULT_CAST) != null ||
+            castExpression.getUserData(Keys.SELECTS_OVERLOAD) != null ||
+            restoresResultType(operand) ||
+            narrowsWidenedResult(castExpression, operand)) {
+
             return;
         }
 
@@ -94,6 +99,79 @@ public final class RedundantCastUtility {
         }
 
         toBeReplaced.replaceWith(operand);
+    }
+
+    /**
+     * Casting an argument to select a method widens the type the compiler infers for a result which
+     * depends on it, so that a cast of that result is needed although it looks redundant here.
+     */
+    private static boolean restoresResultType(final Expression operand) {
+        if (operand instanceof InvocationExpression) {
+            for (final Expression argument : ((InvocationExpression) operand).getArguments()) {
+                if (argument.getUserData(Keys.SELECTS_OVERLOAD) != null) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Tells whether a cast narrows a value whose type is a type variable of a widened receiver: the
+     * compiler then only knows the bound used for the widening.
+     */
+    private static boolean narrowsWidenedResult(final CastExpression cast, final Expression operand) {
+        final List<TypeReference> bounds = operand.getUserData(Keys.WIDENED_BOUNDS);
+
+        if (bounds == null || operand.getUserData(Keys.WIDENED_RECEIVER) == null) {
+            return false;
+        }
+
+        Expression source = operand;
+        int depth = 0;
+
+        while (source instanceof IndexerExpression) {
+            source = removeParentheses(((IndexerExpression) source).getTarget());
+            depth++;
+
+            while (source instanceof CastExpression) {
+                source = removeParentheses(((CastExpression) source).getExpression());
+            }
+        }
+
+        final MemberReference member = source.getUserData(Keys.MEMBER_REFERENCE);
+        TypeReference declared = null;
+
+        if (member instanceof MethodReference) {
+            final MethodDefinition method = ((MethodReference) member).resolve();
+            declared = method != null ? method.getReturnType() : null;
+        }
+        else if (member instanceof FieldReference) {
+            final FieldDefinition field = ((FieldReference) member).resolve();
+            declared = field != null ? field.getFieldType() : null;
+        }
+
+        while (declared != null && declared.isArray() && depth > 0) {
+            declared = declared.getElementType();
+            depth--;
+        }
+
+        TypeReference castType = cast.getType().toTypeReference();
+
+        while (declared != null && castType != null && declared.isArray() && castType.isArray()) {
+            declared = declared.getElementType();
+            castType = castType.getElementType();
+        }
+
+        final TypeReference narrowed = castType;
+
+        return declared != null &&
+               declared.isGenericParameter() &&
+               narrowed != null &&
+               (bounds.isEmpty() ||
+                // Whichever variable is accessed, its bound must make the cast redundant.
+                !bounds.stream().allMatch(bound -> MetadataHelper.isAssignableFrom(narrowed, bound)));
     }
 
     @Nullable

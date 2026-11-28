@@ -39,6 +39,14 @@ public final class Keys {
     public final static Key<ModuleReference> MODULE_REFERENCE = Key.create("ModuleReference");
     public final static Key<TypeReference> TYPE_REFERENCE = Key.create("TypeReference");
     public final static Key<TypeReference> ANONYMOUS_BASE_TYPE_REFERENCE = Key.create("AnonymousBaseTypeReference");
+    /** Marks a cast without which an invocation would select another method. */
+    public final static Key<java.util.List<TypeReference>> WIDENED_BOUNDS = Key.create("WidenedBounds");
+    public final static Key<TypeReference> WIDENED_TYPE = Key.create("WidenedType");
+    public final static Key<TypeReference> SELECTS_OVERLOAD = Key.create("SelectsOverload");
+    /** Marks a cast added to the result of an invocation. */
+    public final static Key<Boolean> RESULT_CAST = Key.create("ResultCast");
+    /** Marks an invocation whose receiver has other type arguments than those it was inferred with. */
+    public final static Key<Boolean> WIDENED_RECEIVER = Key.create("WidenedReceiver");
     public final static Key<DynamicCallSite> DYNAMIC_CALL_SITE = Key.create("DynamicCallSite");
     public final static Key<AstBuilder> AST_BUILDER = Key.create("AstBuilder");
     public final static Key<Object> CONSTANT_VALUE = Key.create("ConstantValue");

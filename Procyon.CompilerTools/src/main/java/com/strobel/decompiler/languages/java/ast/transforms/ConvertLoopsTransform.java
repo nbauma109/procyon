@@ -17,6 +17,7 @@
 package com.strobel.decompiler.languages.java.ast.transforms;
 
 import com.strobel.annotations.Nullable;
+import com.strobel.assembler.metadata.MetadataHelper;
 import com.strobel.assembler.metadata.BuiltinTypes;
 import com.strobel.assembler.metadata.Flags;
 import com.strobel.assembler.metadata.LanguageFeature;
@@ -934,7 +935,13 @@ public final class ConvertLoopsTransform extends ContextTrackingVisitor<AstNode>
         GET_ITERATOR_PATTERN = new ExpressionStatement(
             new AssignmentExpression(
                 new NamedNode("left", new AnyNode()).toExpression(),
-                new AnyNode("collection").toExpression().invoke("iterator")
+                new Choice(
+                    new AnyNode("collection").toExpression().invoke("iterator"),
+                    new CastExpression(
+                        new AnyNode().toType(),
+                        new AnyNode("collection").toExpression().invoke("iterator")
+                    )
+                ).toExpression()
             )
         );
 
@@ -1031,10 +1038,28 @@ public final class ConvertLoopsTransform extends ContextTrackingVisitor<AstNode>
         EMPTY_FOR_EACH_PATTERN = emptyPattern;
     }
 
+    private static boolean acceptsWidenedItems(final AstType itemType, final Expression iterator) {
+        final List<TypeReference> bounds = iterator.getUserData(Keys.WIDENED_BOUNDS);
+        final TypeReference type = itemType.toTypeReference();
+
+        return bounds != null &&
+               !bounds.isEmpty() &&
+               type != null &&
+               bounds.stream().allMatch(bound -> MetadataHelper.isAssignableFrom(type, bound));
+    }
+
     public final ForEachStatement transformForEach(final ExpressionStatement node) {
         final Match m1 = GET_ITERATOR_PATTERN.match(node);
 
         if (!m1.success()) {
+            return null;
+        }
+
+        final Expression value = ((AssignmentExpression) node.getExpression()).getRight();
+        final boolean erasedResult = value.getUserData(Keys.RESULT_CAST) != null;
+
+        // Only the casts added to the result may be dropped along with the iterator.
+        if (value instanceof CastExpression && !erasedResult) {
             return null;
         }
 
@@ -1145,6 +1170,11 @@ public final class ConvertLoopsTransform extends ContextTrackingVisitor<AstNode>
         }
 
         if (itemType == null || itemName == null) {
+            return null;
+        }
+
+        // The collection itself only yields items of the widened type.
+        if (erasedResult && !acceptsWidenedItems(itemType, ((CastExpression) value).getExpression())) {
             return null;
         }
 
