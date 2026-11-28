@@ -1044,6 +1044,19 @@ public class AstMethodBodyBuilder {
                         }
                     }
 
+                    if (hasInstanceArgument &&
+                        isWidened(arg1) &&
+                        !takesClassTypeVariables(targetMethod) &&
+                        throwsOwnVariable(targetMethod)) {
+
+                        final Expression receiver = methodGroup.getTarget();
+
+                        receiver.remove();
+                        methodGroup.setTarget(new ParenthesizedExpression(
+                            wildcardReceiver(receiver, declaringType)
+                        ));
+                    }
+
                     return methodGroup;
                 }
 
@@ -2374,15 +2387,25 @@ public class AstMethodBodyBuilder {
         final List<TypeReference> sources = ((IGenericInstance) viewed).getTypeArguments();
 
         for (int i = 0, n = Math.min(targets.size(), sources.size()); i < n; i++) {
-            if (sources.get(i).isWildcardType() || sources.get(i).isGenericParameter()) {
+            TypeReference target = targets.get(i);
+            TypeReference source = sources.get(i);
+
+            while (target.isArray() && source.isArray()) {
+                target = target.getElementType();
+                source = source.getElementType();
+            }
+
+            if (source.isWildcardType() || source.isGenericParameter()) {
                 continue;
             }
 
-            if (targets.get(i).isGenericParameter()) {
-                arguments.put(targets.get(i).getSimpleName(), sources.get(i));
+            if (target.isGenericParameter()) {
+                if (!source.isPrimitive()) {
+                    arguments.put(target.getSimpleName(), source);
+                }
             }
             else {
-                fixBoundArguments(arguments, targets.get(i), sources.get(i));
+                fixBoundArguments(arguments, target, source);
             }
         }
     }
@@ -4136,18 +4159,8 @@ public class AstMethodBodyBuilder {
                 if (bound instanceof IGenericInstance) {
                     // The variables within a parameterized bound stand for single types.
                     final TypeReference passed = !source.isWildcardType() ? source : wildcardBound(source);
-                    final TypeDefinition definition = bound.resolve();
-                    final TypeReference asBound = passed != null && definition != null
-                                                  ? MetadataHelper.asSuper(definition, passed)
-                                                  : null;
-
-                    // What is passed must at least be a subtype of the class of an upper bound.
-                    if (asBound == null && passed != null && !target.hasSuperBound()) {
-                        return false;
-                    }
-
-                    if (asBound instanceof IGenericInstance &&
-                        !bind((IGenericInstance) bound, (IGenericInstance) asBound, bindings, wildcards)) {
+                    if (passed != null &&
+                        !bindParameterizedBound(bound, passed, target.hasSuperBound(), bindings, wildcards)) {
 
                         return false;
                     }
@@ -4269,6 +4282,34 @@ public class AstMethodBodyBuilder {
         }
 
         return true;
+    }
+
+    private static boolean bindParameterizedBound(
+        final TypeReference bound,
+        final TypeReference passed,
+        final boolean lowerBound,
+        final Map<String, TypeReference> bindings,
+        final List<Map.Entry<GenericParameter, TypeReference>> wildcards) {
+
+        if (lowerBound) {
+            // The class of the lower bound must be a subtype of the class of the argument.
+            if (!MetadataHelper.isAssignableFrom(MetadataHelper.erase(passed), MetadataHelper.erase(bound))) {
+                return false;
+            }
+
+            final TypeDefinition definition = passed.resolve();
+            final TypeReference projected = definition != null ? MetadataHelper.asSuper(definition, bound) : null;
+
+            return !(projected instanceof IGenericInstance && passed instanceof IGenericInstance) ||
+                   bind((IGenericInstance) projected, (IGenericInstance) passed, bindings, wildcards);
+        }
+
+        final TypeDefinition definition = bound.resolve();
+        final TypeReference projected = definition != null ? MetadataHelper.asSuper(definition, passed) : null;
+
+        return projected != null &&
+               (!(projected instanceof IGenericInstance) ||
+                bind((IGenericInstance) bound, (IGenericInstance) projected, bindings, wildcards));
     }
 
     private static boolean accepts(final TypeReference parameterType, final TypeReference argumentType) {
