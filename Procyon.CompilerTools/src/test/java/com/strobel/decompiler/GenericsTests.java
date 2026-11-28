@@ -39,6 +39,84 @@ public class GenericsTests extends DecompilerTest {
     public final TemporaryFolder folder = new TemporaryFolder();
 
     @Test
+    public void testExternalGenericOverloadsRecompileWithoutDebugInformation() throws IOException {
+        final File api = folder.newFile("ReviewApi.java");
+        final File caller = folder.newFile("ReviewCaller.java");
+
+        Files.write(
+            api.toPath(),
+            Arrays.asList(
+                "import java.io.IOException;",
+                "import java.util.Collection;",
+                "import java.util.List;",
+                "import java.util.Set;",
+                "public class ReviewApi {",
+                "    public <E extends Exception> void toss(E e, List<Set<String>> a, List<Integer> b) throws E { }",
+                "    public <N> void toss(IOException e, Collection<? super List<N>> a, Collection<N> b) { }",
+                "    public static class Box<X extends Comparable<Y[]>, Y, E extends Exception> {",
+                "        public void act(X x, Y y) throws E { }",
+                "    }",
+                "    public abstract static class Compared implements Comparable<Object[]> { }",
+                "    public static class Child extends Box<Compared, Object, IOException> { }",
+                "    public <T extends Box<?, ?, ?>> T take(T value) { return value; }",
+                "    public Child take(Child value) { return value; }",
+                "    public static class Own<X> {",
+                "        public <E extends Exception> void act(E e) throws E { }",
+                "    }",
+                "    public static class Owned extends Own<String> { }",
+                "    public <T extends Own<?>> T pick(T value) { return value; }",
+                "    public Owned pick(Owned value) { return value; }",
+                "}"
+            ),
+            StandardCharsets.UTF_8
+        );
+
+        Files.write(
+            caller.toPath(),
+            Arrays.asList(
+                "import java.io.IOException;",
+                "import java.util.List;",
+                "import java.util.Set;",
+                "public class ReviewCaller {",
+                "    void lower(ReviewApi api, IOException ex, List<Set<String>> a, List<Integer> b) throws IOException {",
+                "        api.toss(ex, a, b);",
+                "    }",
+                "    interface ArrayAction { void run(ReviewApi.Compared compared, Integer value) throws IOException; }",
+                "    ArrayAction array(ReviewApi api, ReviewApi.Child child) {",
+                "        ReviewApi.Box<ReviewApi.Compared, Object, IOException> take =",
+                "            (ReviewApi.Box<ReviewApi.Compared, Object, IOException>) (ReviewApi.Box) api.take((ReviewApi.Box<?, ?, ?>) child);",
+                "        return take::act;",
+                "    }",
+                "    interface OwnAction { void run(IOException e) throws IOException; }",
+                "    OwnAction own(ReviewApi api, ReviewApi.Owned child) {",
+                "        ReviewApi.Own<?> take = api.pick((ReviewApi.Own<?>) child);",
+                "        return take::act;",
+                "    }",
+                "}"
+            ),
+            StandardCharsets.UTF_8
+        );
+
+        final JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        final String classPath = folder.getRoot().getPath();
+
+        assertEquals(0, compiler.run(null, null, null, "-g:none", "-d", classPath, api.getPath(), caller.getPath()));
+
+        final PlainTextOutput output = new PlainTextOutput();
+
+        Decompiler.decompile(new File(folder.getRoot(), "ReviewCaller.class").getPath(), output, defaultSettings());
+
+        final File recompiled = folder.newFolder("recompiled");
+        final File decompiled = new File(recompiled, caller.getName());
+
+        Files.write(decompiled.toPath(), output.toString().getBytes(StandardCharsets.UTF_8));
+
+        assertEquals(output.toString(), 0, compiler.run(
+            null, null, null, "-classpath", classPath, "-d", recompiled.getPath(), decompiled.getPath()
+        ));
+    }
+
+    @Test
     public void testLocalsOfWidenedResultsWithoutDebugInformation() throws IOException {
         final File source = folder.newFile("Widened.java");
 
