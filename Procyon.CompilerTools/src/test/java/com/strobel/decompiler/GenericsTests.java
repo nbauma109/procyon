@@ -394,6 +394,26 @@ public class GenericsTests extends DecompilerTest {
                 "        Ordered<Comparable<?>, java.io.IOException> v = (Ordered<Comparable<?>, java.io.IOException>) (Ordered) ordered((Ordered<?, ?>) t);",
                 "        return v::get;",
                 "    }",
+                "    static class Tied<X extends Y, Y, E extends Exception> { void act(X x, Y y) throws E { } }",
+                "    static class Tying extends Tied<String, Object, java.io.IOException> { }",
+                "    <T extends Tied<?, ?, ?>> T tied(T t) { return t; }",
+                "    Tying tied(Tying t) { return t; }",
+                "    interface Knot { void run(String s, Integer n) throws java.io.IOException; }",
+                "    Knot knot(Tying t) {",
+                "        Tied<String, Object, java.io.IOException> k = (Tied<String, Object, java.io.IOException>) (Tied) tied((Tied<?, ?, ?>) t);",
+                "        return k::act;",
+                "    }",
+                "    interface First<T> { Object run(T t) throws Exception; }",
+                "    interface Second { String run(String s) throws java.io.IOException; }",
+                "    interface Merged3 extends First<String>, Second { }",
+                "    static class Acted<X, E extends Exception> { String act(X x) throws E { return null; } }",
+                "    static class Acting2 extends Acted<String, java.io.IOException> { }",
+                "    <T extends Acted<?, ?>> T acted(T t) { return t; }",
+                "    Acting2 acted(Acting2 t) { return t; }",
+                "    Merged3 merged3(Acting2 t) {",
+                "        Acted<String, java.io.IOException> m = (Acted<String, java.io.IOException>) (Acted) acted((Acted<?, ?>) t);",
+                "        return m::act;",
+                "    }",
                 "    interface Strings { String[] get(); }",
                 "    Strings fixed(Several s) {",
                 "        Many<String> f = (Many<String>) (Many) many((Many<?>) s);",
@@ -787,6 +807,24 @@ public class GenericsTests extends DecompilerTest {
             "    Comparing comparing(final Orders orders) {\n" +
             "        return ((Ordered<Comparable<?>, IOException>)(Ordered)this.ordered((Ordered)orders))::get;\n" +
             "    }\n" +
+            "    <T extends Tied<?, ?, ?>> T tied(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Tying tied(final Tying tying) {\n" +
+            "        return tying;\n" +
+            "    }\n" +
+            "    Knot knot(final Tying tying) {\n" +
+            "        return ((Tied<String, Serializable, IOException>)(Tied)this.tied((Tied)tying))::act;\n" +
+            "    }\n" +
+            "    <T extends Acted<?, ?>> T acted(final T t) {\n" +
+            "        return t;\n" +
+            "    }\n" +
+            "    Acting2 acted(final Acting2 acting2) {\n" +
+            "        return acting2;\n" +
+            "    }\n" +
+            "    Merged3 merged3(final Acting2 acting2) {\n" +
+            "        return ((Acted<String, IOException>)(Acted)this.acted((Acted)acting2))::act;\n" +
+            "    }\n" +
             "    Strings fixed(final Several several) {\n" +
             "        return ((Many<String>)(Many)this.many((Many)several))::all;\n" +
             "    }\n" +
@@ -815,6 +853,30 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    interface Strings {\n" +
             "        String[] get();\n" +
+            "    }\n" +
+            "    static class Acting2 extends Acted<String, IOException> {\n" +
+            "    }\n" +
+            "    static class Acted<X, E extends Exception> {\n" +
+            "        String act(final X x) throws E, Exception {\n" +
+            "            return null;\n" +
+            "        }\n" +
+            "    }\n" +
+            "    interface Merged3 extends First<String>, Second {\n" +
+            "    }\n" +
+            "    interface First<T> {\n" +
+            "        Object run(final T p0) throws Exception;\n" +
+            "    }\n" +
+            "    interface Second {\n" +
+            "        String run(final String p0) throws IOException;\n" +
+            "    }\n" +
+            "    interface Knot {\n" +
+            "        void run(final String p0, final Integer p1) throws IOException;\n" +
+            "    }\n" +
+            "    static class Tying extends Tied<String, Object, IOException> {\n" +
+            "    }\n" +
+            "    static class Tied<X extends Y, Y, E extends Exception> {\n" +
+            "        void act(final X x, final Y y) throws E, Exception {\n" +
+            "        }\n" +
             "    }\n" +
             "    interface Comparing {\n" +
             "        List<? extends Comparable<?>> run(final String p0, final Integer p1) throws IOException;\n" +
@@ -2016,6 +2078,13 @@ public class GenericsTests extends DecompilerTest {
             "    }\n" +
             "    void shallow(final Integer e, final List<String> a, final List<Integer> b) {\n" +
             "        this.flat(e, a, b);\n" +
+            "    }\n" +
+            "    <E extends Number> void primitive(final E e, final List<int[]> a, final List<Integer> b) {\n" +
+            "    }\n" +
+            "    <N> void primitive(final Integer e, final Collection<? extends N[]> a, final Collection<N> b) {\n" +
+            "    }\n" +
+            "    void primitives2(final Integer e, final List<int[]> a, final List<Integer> b) {\n" +
+            "        this.primitive(e, a, b);\n" +
             "    }\n" +
             "    <E extends Number> void add(final E e, final List<String> list, final Integer n) {\n" +
             "    }\n" +
@@ -3409,6 +3478,16 @@ class Shared {
 
     void shallow(final Integer e, final List<String> a, final List<Integer> b) {
         this.flat(e, a, b);
+    }
+
+    <E extends Number> void primitive(final E e, final List<int[]> a, final List<Integer> b) {
+    }
+
+    <N> void primitive(final Integer e, final Collection<? extends N[]> a, final Collection<N> b) {
+    }
+
+    void primitives2(final Integer e, final List<int[]> a, final List<Integer> b) {
+        this.primitive(e, a, b);
     }
 
     <E extends Number> void add(final E e, final List<String> list, final Integer n) {

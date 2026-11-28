@@ -2257,6 +2257,33 @@ public class AstMethodBodyBuilder {
     }
 
     /**
+     * Widens the type given to a class variable which bounds another until it accepts the type given to
+     * the latter.
+     */
+    private static Map<String, TypeReference> withinClassBounds(
+        final TypeDefinition definition,
+        final Map<String, TypeReference> arguments) {
+
+        final Map<String, TypeReference> reconciled = new HashMap<>(arguments);
+
+        for (final GenericParameter variable : definition.getGenericParameters()) {
+            if (!variable.hasExtendsBound() || !variable.getExtendsBound().isGenericParameter()) {
+                continue;
+            }
+
+            final String bound = variable.getExtendsBound().getSimpleName();
+            final TypeReference lower = reconciled.get(variable.getSimpleName());
+            final TypeReference upper = reconciled.get(bound);
+
+            if (lower != null && upper != null) {
+                reconciled.put(bound, commonType(upper, lower));
+            }
+        }
+
+        return reconciled;
+    }
+
+    /**
      * Returns the types which the widened arguments of the invocation producing a value had before they
      * were widened.
      */
@@ -2362,12 +2389,13 @@ public class AstMethodBodyBuilder {
             return receiver;
         }
 
+        final Map<String, TypeReference> reconciled = withinClassBounds(definition, arguments);
         final List<TypeReference> typeArguments = new ArrayList<>();
         final List<TypeReference> origins = originalTypes(receiver, new HashSet<Variable>());
         boolean specialized = false;
 
         for (final GenericParameter variable : definition.getGenericParameters()) {
-            TypeReference typeArgument = arguments.get(variable.getSimpleName());
+            TypeReference typeArgument = reconciled.get(variable.getSimpleName());
 
             if (typeArgument != null && typeArgument.isWildcardType()) {
                 // Only a limit is known: the type seen before the widening may satisfy it, or else the
@@ -2621,13 +2649,10 @@ public class AstMethodBodyBuilder {
         // Only the declaration of the most derived interface counts, whether abstract or default.
         final List<MethodDefinition> declarations = new ArrayList<>();
 
+        // Whatever abstract methods remain declare the single function, even where their signatures only
+        // agree once type arguments are substituted.
         for (final MethodDefinition method : methods) {
-            if (method.isAbstract() &&
-                !isObjectMethod(method) &&
-                !any(methods, other -> overrides(other, method)) &&
-                (declarations.isEmpty() ||
-                 parameterSignature(method).equals(parameterSignature(declarations.get(0))))) {
-
+            if (method.isAbstract() && !isObjectMethod(method) && !any(methods, other -> overrides(other, method))) {
                 declarations.add(method);
             }
         }
@@ -3990,6 +4015,11 @@ public class AstMethodBodyBuilder {
 
                     // An upper bound which is an array admits nothing with fewer dimensions.
                     if (passed != null && element.isArray() && !target.hasSuperBound()) {
+                        return false;
+                    }
+
+                    // No reference type has primitive elements for its subtypes.
+                    if (passed != null && passed.isPrimitive() && element.isGenericParameter() && !target.hasSuperBound()) {
                         return false;
                     }
 
